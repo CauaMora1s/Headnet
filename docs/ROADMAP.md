@@ -84,11 +84,13 @@ validation, and the no-fake-functionality rule.
 ### Definition of Done
 
 - [x] `make dev` starts a server that answers `/health`
-- [x] `make check` passes
-- [x] Every package has tests
+- [x] Format, vet, tidy, lint and the full test suite pass locally
+- [x] Every implemented package has tests
 - [x] Threat model written
 - [x] ADRs for every major decision
-- [x] CI green on Linux, macOS and Windows
+- [ ] CI green on Linux, macOS and Windows — the workflows are written but
+      have not run yet; there is no remote. This is the one item Phase 0
+      cannot tick on its own.
 
 ---
 
