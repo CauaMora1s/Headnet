@@ -1,0 +1,50 @@
+name: Feature request
+description: Suggest something Headnet should do
+labels: [enhancement, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please check [the roadmap](https://github.com/headnet/headnet/blob/main/docs/ROADMAP.md)
+        first. Much of what Headnet will do is planned but unbuilt, and it is
+        more useful to say "Phase 6 should also cover X" than to open a
+        duplicate.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: >-
+        What are you trying to do that Headnet makes hard or impossible?
+        Describe the situation rather than the solution — it often turns out
+        there is a better answer than the one that first comes to mind.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you would like it to do
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you have considered
+      description: >-
+        Including how other tools solve this, if you know. Headnet borrows
+        architecture from WireGuard, Tailscale, Headscale, NetBird and Nebula.
+
+  - type: checkboxes
+    id: principles
+    attributes:
+      label: Fit with the project's principles
+      description: >-
+        Headnet aims to stay simple, self-hostable and secure by default.
+        Which of these does your idea hold to?
+      options:
+        - label: It does not require the user to understand WireGuard, NAT or key management
+        - label: It works in a self-hosted deployment with no cloud dependency
+        - label: It does not weaken the default security posture
+        - label: It does not require private key material to leave a device

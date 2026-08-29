@@ -1,0 +1,35 @@
+# Build output
+/bin/
+/dist/
+apps/web/dist/
+
+# Runtime state. The SQLite database holds the whole control plane, including
+# device public keys and, from Phase 1, password hashes. It must never be
+# committed.
+/data/
+*.db
+*.db-wal
+*.db-shm
+
+# Local configuration. headnet.yaml is a real operator config and may carry a
+# database DSN; only the .example files belong in git.
+/headnet.yaml
+/.env
+/.env.*
+!/.env.example
+
+# Dependencies
+node_modules/
+
+# Editors and operating systems
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Test and tooling artefacts
+coverage.out
+coverage.html
+*.test
+/.smoke/

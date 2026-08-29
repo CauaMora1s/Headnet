@@ -1,0 +1,68 @@
+# Automated dependency updates.
+#
+# Grouped and scheduled weekly rather than firing a pull request per package:
+# a wall of individual bumps gets rubber-stamped, and rubber-stamping
+# dependency updates is how supply-chain compromises get merged.
+version: 2
+
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      # Patch and minor updates are reviewed together; a major version is
+      # always its own pull request because it needs real thought.
+      go-minor-and-patch:
+        update-types: ["minor", "patch"]
+    labels:
+      - dependencies
+      - go
+
+  - package-ecosystem: npm
+    directory: /apps/web
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      frontend-minor-and-patch:
+        update-types: ["minor", "patch"]
+    labels:
+      - dependencies
+      - frontend
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+    commit-message:
+      prefix: "chore(ci)"
+    groups:
+      actions:
+        patterns: ["*"]
+    labels:
+      - dependencies
+      - ci
+
+  - package-ecosystem: docker
+    directory: /deploy/docker
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+    commit-message:
+      prefix: "chore(deps)"
+    labels:
+      - dependencies
+      - docker

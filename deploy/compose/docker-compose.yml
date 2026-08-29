@@ -1,0 +1,89 @@
+# Headnet with Docker Compose.
+#
+# The default stack is one container and one volume, backed by SQLite. That is
+# the whole installation for a home server, a NAS or a small team:
+#
+#   docker compose -f deploy/compose/docker-compose.yml up -d
+#   curl http://localhost:8080/health
+#
+# PostgreSQL is available behind a profile for larger deployments:
+#
+#   docker compose -f deploy/compose/docker-compose.yml --profile postgres up -d
+#
+# This file does not terminate TLS. Put a reverse proxy in front of it before
+# exposing the control plane to the internet, and set HEADNET_SERVER_BASE_URL
+# to the public HTTPS URL. See docs/deployment.md.
+
+name: headnet
+
+services:
+  server:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+      args:
+        VERSION: ${HEADNET_VERSION:-0.0.0-dev}
+    image: headnet/headnet:${HEADNET_VERSION:-latest}
+    restart: unless-stopped
+
+    ports:
+      # Bound to loopback by default. Publishing straight to 0.0.0.0 would put
+      # a plain-HTTP control plane on the public internet.
+      - "127.0.0.1:8080:8080"
+
+    environment:
+      HEADNET_ENVIRONMENT: ${HEADNET_ENVIRONMENT:-development}
+      HEADNET_SERVER_LISTEN: ":8080"
+      HEADNET_SERVER_BASE_URL: ${HEADNET_SERVER_BASE_URL:-http://localhost:8080}
+      HEADNET_DATABASE_DRIVER: ${HEADNET_DATABASE_DRIVER:-sqlite}
+      HEADNET_DATABASE_PATH: /data/headnet.db
+      # Only read when the driver is postgres; supply it from your own .env.
+      HEADNET_DATABASE_DSN: ${HEADNET_DATABASE_DSN:-}
+      HEADNET_NETWORK_IPV4_CIDR: ${HEADNET_NETWORK_IPV4_CIDR:-100.100.0.0/16}
+      HEADNET_LOG_LEVEL: ${HEADNET_LOG_LEVEL:-info}
+      HEADNET_LOG_FORMAT: json
+
+    volumes:
+      # The entire control plane lives here. Back it up.
+      - headnet-data:/data
+
+    # Defence in depth: the process is already non-root, and this stops it
+    # from acquiring anything more even if it were compromised.
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    cap_drop:
+      - ALL
+
+    healthcheck:
+      test:
+        ["CMD", "/usr/local/bin/headnet", "diagnostics", "-server", "http://127.0.0.1:8080", "-timeout", "4s"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # Optional. Start it with --profile postgres, and set
+  # HEADNET_DATABASE_DRIVER=postgres plus a matching HEADNET_DATABASE_DSN.
+  postgres:
+    profiles: ["postgres"]
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: headnet
+      POSTGRES_USER: headnet
+      # There is no default. Compose will refuse to start without it, which is
+      # the intended behaviour: a database with a guessable password is worse
+      # than one that fails to start.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in your .env file}
+    volumes:
+      - headnet-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U headnet -d headnet"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  headnet-data:
+  headnet-postgres:

@@ -1,0 +1,133 @@
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # A weekly run matters more than the per-commit runs: most vulnerability
+    # findings arrive because the world learned something new about a
+    # dependency, not because anyone changed the code.
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: security-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+jobs:
+  govulncheck:
+    name: Go vulnerability scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # govulncheck is call-graph aware: it reports a vulnerability only when
+      # the affected function is actually reachable from this code. That keeps
+      # the signal high enough that a finding is always worth acting on.
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+
+      - name: Scan
+        run: govulncheck ./...
+
+  codeql:
+    name: CodeQL
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [go, javascript-typescript]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialise CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          language: ${{ matrix.language }}
+          # security-and-quality adds maintainability rules on top of the
+          # security ones; on a young codebase that is worth the extra noise.
+          queries: security-and-quality
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Analyse
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: /language:${{ matrix.language }}
+
+  dependency-review:
+    name: Dependency review
+    runs-on: ubuntu-latest
+    # Only meaningful on a pull request, where there is a base to diff against.
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      # Blocks a pull request that introduces a vulnerable or badly-licensed
+      # dependency, which is far cheaper than removing one after it has been
+      # merged and released.
+      - name: Review dependency changes
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: moderate
+          # Copyleft licences would conflict with the Apache-2.0 licensing of
+          # packages/, which third parties are meant to be able to reuse.
+          # See docs/licensing.md.
+          deny-licenses: GPL-2.0, GPL-3.0, AGPL-3.0, LGPL-2.1, LGPL-3.0
+          comment-summary-in-pr: on-failure
+
+  secret-scan:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Gitleaks needs the history: a credential committed and then
+          # reverted is still a leaked credential.
+          fetch-depth: 0
+
+      - name: Scan for committed secrets
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  npm-audit:
+    name: Frontend dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # The frontend is entirely build-time dependencies, so a high-severity
+      # finding is a build-integrity problem rather than a runtime one — which
+      # is exactly the kind of supply-chain risk worth failing on.
+      - name: Audit
+        run: pnpm audit --audit-level high

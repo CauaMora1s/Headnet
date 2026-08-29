@@ -1,0 +1,83 @@
+# systemd unit for the Headnet control plane.
+#
+# Install:
+#   sudo install -m 0755 headnet-server /usr/local/bin/
+#   sudo useradd --system --no-create-home --shell /usr/sbin/nologin headnet
+#   sudo install -d -o headnet -g headnet -m 0750 /var/lib/headnet /etc/headnet
+#   sudo install -m 0644 headnet-server.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now headnet-server
+#
+# Configuration goes in /etc/headnet/headnet.yaml, and anything secret in
+# /etc/headnet/headnet.env with mode 0600 owned by root.
+
+[Unit]
+Description=Headnet control plane
+Documentation=https://github.com/headnet/headnet/tree/main/docs
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# exec, not notify: the server does not implement the sd_notify protocol, and
+# declaring notify would leave systemd waiting for a readiness message that
+# never arrives. Readiness is exposed over HTTP at /ready instead.
+Type=exec
+User=headnet
+Group=headnet
+
+ExecStart=/usr/local/bin/headnet-server -config /etc/headnet/headnet.yaml
+
+# Secrets are read from a root-owned file the service user cannot read
+# directly; systemd passes them in as environment variables.
+EnvironmentFile=-/etc/headnet/headnet.env
+
+Restart=on-failure
+RestartSec=5s
+
+# Give in-flight requests time to finish. It must exceed the server's own
+# shutdown_timeout, or systemd will kill the process mid-shutdown.
+TimeoutStopSec=30s
+KillSignal=SIGTERM
+
+# --- Hardening --------------------------------------------------------------
+# The control plane needs one directory and one socket. Everything else is
+# taken away, so a remote-code-execution bug has very little to work with.
+
+# Creates and owns /var/lib/headnet.
+StateDirectory=headnet
+StateDirectoryMode=0750
+
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RemoveIPC=true
+
+# The control plane speaks TCP and nothing else.
+RestrictAddressFamilies=AF_INET AF_INET6
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @obsolete
+SystemCallArchitectures=native
+
+# The service has no reason to write anywhere but its state directory.
+ReadWritePaths=/var/lib/headnet
+
+# Binding a privileged port is not required; the default listener is :8080 and
+# TLS belongs to a reverse proxy in front of this service.
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+[Install]
+WantedBy=multi-user.target

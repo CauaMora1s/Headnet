@@ -1,0 +1,90 @@
+name: Bug report
+description: Something does not work the way it should
+labels: [bug, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this.
+
+        **If this is a security vulnerability, stop here** and follow
+        [SECURITY.md](https://github.com/headnet/headnet/blob/main/SECURITY.md)
+        instead. A public issue tells attackers before it tells us.
+
+        Headnet is early software: much of it is not implemented yet. Please
+        check [the roadmap](https://github.com/headnet/headnet/blob/main/docs/ROADMAP.md)
+        first — a feature that has not been built is not a bug.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What did you expect, and what happened instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Start the server with ...
+        2. Run `headnet ...`
+        3. Observe ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: >-
+        Output of `headnet diagnostics -server <your server URL>` and
+        `headnet version`. This is the fastest route to a diagnosis.
+      render: shell
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log output
+      description: >-
+        Server logs around the failure. If you have a request ID from an error
+        response, include the line that matches it.
+
+        **Redact anything sensitive first** — hostnames, addresses and
+        anything that looks like a credential.
+      render: shell
+
+  - type: input
+    id: version
+    attributes:
+      label: Headnet version
+      placeholder: "0.1.0 (or a commit hash)"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      multiple: true
+      options:
+        - Linux
+        - macOS
+        - Windows
+        - Docker
+        - Kubernetes
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: database
+    attributes:
+      label: Database
+      options:
+        - SQLite
+        - PostgreSQL
+        - Not applicable
+    validations:
+      required: true

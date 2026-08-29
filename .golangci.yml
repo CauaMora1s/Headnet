@@ -1,0 +1,89 @@
+# golangci-lint configuration.
+#
+# The selection below is deliberately opinionated rather than exhaustive. Every
+# linter here catches a class of bug that has cost real projects real
+# incidents; noisy stylistic linters are left off so that a failing lint run
+# always means something worth fixing.
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: none
+  enable:
+    # Compiler-adjacent correctness.
+    - errcheck        # unchecked errors, the single most common Go bug
+    - govet           # the standard suite, including printf verb checking
+    - ineffassign     # assignments that are never read
+    - staticcheck     # includes the former stylecheck and gosimple
+    - unused          # dead identifiers
+
+    # Security.
+    - gosec           # hardcoded credentials, weak crypto, unsafe permissions
+    - bodyclose       # leaked HTTP response bodies exhaust connections
+    - noctx           # HTTP requests with no context cannot be cancelled
+    - rowserrcheck    # an unchecked sql.Rows.Err silently truncates results
+    - sqlclosecheck   # leaked rows and statements hold database locks
+
+    # Correctness traps specific to this codebase.
+    - contextcheck    # a dropped context breaks graceful shutdown
+    - errorlint       # comparisons that break errors.Is/As wrapping
+    - nilerr          # returning nil after checking an error is non-nil
+    - copyloopvar     # loop-variable capture
+    - durationcheck   # multiplying two durations is almost always wrong
+    - makezero        # append to a non-zero-length make() slice
+    - musttag         # struct fields serialised without tags
+
+    # Maintainability.
+    - misspell
+    - unconvert
+    - wastedassign
+    - whitespace
+
+  settings:
+    errcheck:
+      # Failing to check these three has been the cause of leaked file handles
+      # and silently truncated responses often enough to be worth naming.
+      check-type-assertions: true
+      check-blank: false
+
+    govet:
+      enable-all: true
+      disable:
+        # Struct field alignment is a micro-optimisation that fights
+        # readability; the control plane is not allocation-bound.
+        - fieldalignment
+
+    gosec:
+      excludes:
+        # Integer-conversion warnings are overwhelmingly false positives on
+        # sizes and durations that are bounded elsewhere.
+        - G115
+
+    staticcheck:
+      checks:
+        - all
+        # ST1000 requires a package comment in a specific form; ours are
+        # narrative and already present.
+        - -ST1000
+
+  exclusions:
+    rules:
+      # Tests deliberately construct bad input, ignore errors on paths whose
+      # failure is the thing under test, and hard-code sample credentials.
+      - path: _test\.go
+        linters:
+          - errcheck
+          - gosec
+          - noctx
+          - bodyclose
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/headnet/headnet

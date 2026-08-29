@@ -1,0 +1,16 @@
+# Normalise line endings so a checkout on Windows and one on Linux produce the
+# same content hashes, and so shell scripts stay executable in containers.
+* text=auto eol=lf
+
+*.sh    text eol=lf
+*.ps1   text eol=crlf
+*.bat   text eol=crlf
+
+# Generated or vendored files should not clutter diffs or language statistics.
+pnpm-lock.yaml  linguist-generated=true -diff
+go.sum          linguist-generated=true -diff
+
+# Binaries
+*.png binary
+*.jpg binary
+*.ico binary

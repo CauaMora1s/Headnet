@@ -1,0 +1,20 @@
+# Keep the build context small and keep local state out of the image.
+.git
+.github
+bin
+data
+dist
+node_modules
+apps/web/node_modules
+apps/web/dist
+docs
+test
+*.db
+*.db-wal
+*.db-shm
+.env
+.env.*
+!.env.example
+headnet.yaml
+coverage.out
+coverage.html

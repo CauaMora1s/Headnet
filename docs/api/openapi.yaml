@@ -1,0 +1,517 @@
+openapi: 3.1.0
+
+info:
+  title: Headnet control-plane API
+  version: "1.0.0"
+  summary: Self-hosted mesh VPN control plane
+  description: |
+    The HTTP API of the Headnet control plane.
+
+    **This document describes only what is implemented.** Endpoints for
+    features that have not been built are deliberately absent rather than
+    present-and-stubbed: a specification that lists endpoints returning
+    fabricated data is worse than one that is honestly short.
+
+    Planned endpoints are listed in
+    [docs/ROADMAP.md](https://github.com/headnet/headnet/blob/main/docs/ROADMAP.md)
+    and will be added here as they land.
+
+    ## Versioning
+
+    The API is versioned in its path (`/api/v1`). The version changes only for
+    a breaking change; additive changes — new fields, new endpoints — happen
+    in place.
+
+    **Clients must ignore fields they do not recognise.** That requirement is
+    what makes additive evolution possible.
+
+    Separately from the API version, a *protocol* version governs the
+    client/server contract as a whole. See `/api/v1/protocol/negotiate`.
+
+    ## Errors
+
+    Every non-2xx response carries the same envelope, so a client parses one
+    shape:
+
+    ```json
+    {
+      "error": {
+        "code": "bad_request",
+        "message": "protocol_version must be a positive integer",
+        "details": { "field": "protocol_version" },
+        "request_id": "req_4KQZ9V3B2N7XR8T0YCFHJM"
+      }
+    }
+    ```
+
+    `code` is stable and safe to branch on. `message` is for humans and may
+    change at any time — do not parse it. `request_id` correlates the response
+    with the server log, and is worth quoting in a bug report.
+
+    ## Rate limiting
+
+    Requests are limited per client, **before** routing and authentication.
+    Exceeding the budget returns `429` with a `Retry-After` header.
+
+    Behind a reverse proxy every request appears to come from the proxy, so
+    the limiter treats it as one client. Forwarding headers are deliberately
+    not trusted. See
+    [docs/deployment.md](https://github.com/headnet/headnet/blob/main/docs/deployment.md).
+
+  license:
+    name: AGPL-3.0-or-later
+    identifier: AGPL-3.0-or-later
+
+  contact:
+    name: Headnet
+    url: https://github.com/headnet/headnet
+
+servers:
+  - url: http://localhost:8080
+    description: Local development
+  - url: https://vpn.example.com
+    description: A self-hosted deployment
+
+tags:
+  - name: Operations
+    description: |
+      Unauthenticated probes for load balancers and orchestrators. They
+      disclose nothing beyond a release string and dependency status.
+  - name: Protocol
+    description: Build identity and version negotiation.
+
+paths:
+  /health:
+    get:
+      tags: [Operations]
+      summary: Aggregate health
+      description: |
+        Reports the overall status with per-dependency detail.
+
+        Returns `200` when the server is `ok` or `degraded`, and `503` when it
+        is `down`. A `503` here is a live server reporting a broken
+        dependency, which is different from an unreachable one — clients
+        should treat the body as a real answer rather than an error.
+      operationId: getHealth
+      security: []
+      responses:
+        "200":
+          description: The server is usable.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HealthResponse" }
+              examples:
+                healthy:
+                  value:
+                    status: ok
+                    version: 0.1.0
+                    uptime_seconds: 3600
+                    checks:
+                      - name: database
+                        status: ok
+                        duration_ms: 1
+        "503":
+          description: A dependency is unavailable.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HealthResponse" }
+              examples:
+                databaseDown:
+                  value:
+                    status: down
+                    version: 0.1.0
+                    uptime_seconds: 42
+                    checks:
+                      - name: database
+                        status: down
+                        detail: the database is not reachable
+                        duration_ms: 3000
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /live:
+    get:
+      tags: [Operations]
+      summary: Liveness
+      description: |
+        Reports that the process is running and able to serve. It checks
+        nothing else.
+
+        Use this for a container liveness probe. **Do not use `/ready`** for
+        that: `/ready` fails when the database is briefly unreachable, and
+        restarting the control plane over that turns a recoverable outage into
+        a crash loop.
+      operationId: getLive
+      security: []
+      responses:
+        "200":
+          description: The process is alive.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HealthResponse" }
+
+  /ready:
+    get:
+      tags: [Operations]
+      summary: Readiness
+      description: |
+        Reports whether the server can serve real traffic: the database is
+        reachable and migrated to the schema this build expects.
+
+        Use this for load-balancer rotation.
+      operationId: getReady
+      security: []
+      responses:
+        "200":
+          description: Ready to serve.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HealthResponse" }
+        "503":
+          description: Not ready. Take this instance out of rotation.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HealthResponse" }
+
+  /metrics:
+    get:
+      tags: [Operations]
+      summary: Prometheus metrics (not implemented)
+      description: |
+        Disabled by default. When `observability.metrics_enabled` is false the
+        endpoint returns `404`.
+
+        When it is enabled, it returns **`501`** — Prometheus instrumentation
+        is a Phase 12 item. It deliberately does not return an empty but valid
+        metrics page, because a dashboard would render that as a healthy,
+        entirely fictional zero.
+      operationId: getMetrics
+      security: []
+      responses:
+        "404":
+          description: Metrics are disabled.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "501":
+          description: Metrics are enabled but not implemented.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              examples:
+                notImplemented:
+                  value:
+                    error:
+                      code: not_implemented
+                      message: Prometheus metrics is not implemented yet
+                      details:
+                        roadmap_phase: Phase 12
+
+  /api/v1/version:
+    get:
+      tags: [Protocol]
+      summary: Build identity and supported protocol range
+      description: |
+        The first call a client makes. It reports the server release and the
+        range of protocol versions the server speaks, so a client can tell
+        immediately whether it can talk to this server at all.
+      operationId: getVersion
+      security: []
+      responses:
+        "200":
+          description: Build and protocol information.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VersionResponse" }
+              examples:
+                current:
+                  value:
+                    version: 0.1.0
+                    commit: a1b2c3d
+                    build_date: "2026-08-29T12:00:00Z"
+                    protocol_version: 1
+                    min_protocol_version: 1
+                    capabilities: [protocol.negotiation]
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /api/v1/protocol/negotiate:
+    post:
+      tags: [Protocol]
+      summary: Agree a protocol version and capability set
+      description: |
+        A client sends the protocol range and capabilities it supports; the
+        server replies with what both sides will use.
+
+        The agreed version is the highest both accept. The agreed capabilities
+        are the intersection of what each advertises — a client must not use
+        anything absent from the response.
+
+        Capabilities the server does not recognise are ignored rather than
+        rejected, so a newer client talking to an older server degrades
+        gracefully.
+
+        When the two ranges do not overlap, the response is `426` naming which
+        side needs upgrading. Doing this up front turns a version mismatch
+        into one clear error instead of a confusing failure several requests
+        later.
+      operationId: negotiateProtocol
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NegotiateRequest" }
+            examples:
+              matching:
+                summary: A client speaking the current version
+                value:
+                  protocol_version: 1
+                  capabilities: [protocol.negotiation]
+                  client_version: 0.1.0
+      responses:
+        "200":
+          description: Agreed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NegotiateResponse" }
+              examples:
+                agreed:
+                  value:
+                    protocol_version: 1
+                    capabilities: [protocol.negotiation]
+                    server_version: 0.1.0
+        "400":
+          description: The request was malformed or the values were invalid.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "426":
+          description: |
+            The client and server protocol ranges do not overlap. The message
+            says which side must be upgraded.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              examples:
+                incompatible:
+                  value:
+                    error:
+                      code: unsupported_protocol_version
+                      message: >-
+                        incompatible protocol version: the peer is too old
+                        (local supports 2..3, peer supports 1..1);
+                        upgrade the peer
+                      details:
+                        server_protocol_version: "3"
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: headnet_session
+      description: |
+        **Not implemented yet** (Phase 1). Server-side sessions in a `Secure`,
+        `HttpOnly`, `SameSite=Lax` cookie.
+
+        Sessions are deliberately not stateless tokens: when a device is
+        stolen, an administrator must be able to revoke access immediately,
+        and a self-contained token cannot be revoked before it expires.
+
+  responses:
+    RateLimited:
+      description: |
+        The client exceeded its request budget. `Retry-After` gives the number
+        of seconds to wait.
+      headers:
+        Retry-After:
+          schema: { type: integer }
+          description: Seconds to wait before retrying.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+          examples:
+            limited:
+              value:
+                error:
+                  code: rate_limited
+                  message: too many requests; slow down and try again shortly
+                  details:
+                    retry_after_seconds: "12"
+
+    PayloadTooLarge:
+      description: The request body exceeded `server.max_body_bytes`.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  schemas:
+    HealthStatus:
+      type: string
+      enum: [ok, degraded, down]
+      description: |
+        `ok` — fully functional.
+        `degraded` — working, but something needs an operator's attention.
+        `down` — not usable.
+
+    Check:
+      type: object
+      required: [name, status, duration_ms]
+      properties:
+        name:
+          type: string
+          description: The dependency probed.
+          examples: [database]
+        status: { $ref: "#/components/schemas/HealthStatus" }
+        detail:
+          type: string
+          description: |
+            An operator-facing explanation of a non-`ok` status.
+
+            Health endpoints are unauthenticated, so this never contains a
+            connection string, a credential, a file path or a driver error.
+          examples: [the database is not reachable]
+        duration_ms:
+          type: integer
+          format: int64
+          description: How long the probe took.
+
+    HealthResponse:
+      type: object
+      required: [status, version, uptime_seconds, checks]
+      properties:
+        status:
+          allOf: [{ $ref: "#/components/schemas/HealthStatus" }]
+          description: The worst status among the checks.
+        version:
+          type: string
+          examples: ["0.1.0"]
+        uptime_seconds:
+          type: integer
+          format: int64
+        checks:
+          type: array
+          items: { $ref: "#/components/schemas/Check" }
+
+    VersionResponse:
+      type: object
+      required:
+        [version, commit, build_date, protocol_version, min_protocol_version, capabilities]
+      properties:
+        version:
+          type: string
+          description: The server release.
+        commit:
+          type: string
+          description: |
+            The git revision, suffixed `-dirty` when built from a modified
+            tree. `unknown` for a build with no VCS information.
+        build_date:
+          type: string
+          description: RFC 3339 build timestamp, or `unknown`.
+        protocol_version:
+          type: integer
+          minimum: 1
+          description: The newest protocol version the server speaks.
+        min_protocol_version:
+          type: integer
+          minimum: 1
+          description: The oldest protocol version the server accepts.
+        capabilities:
+          type: array
+          items: { type: string }
+          description: |
+            Optional behaviours this server implements. A capability appears
+            here only once the behaviour behind it actually works end to end.
+
+    NegotiateRequest:
+      type: object
+      required: [protocol_version]
+      properties:
+        protocol_version:
+          type: integer
+          minimum: 1
+          description: The newest version the client speaks.
+        min_protocol_version:
+          type: integer
+          minimum: 1
+          description: |
+            The oldest version the client accepts. Omitted or zero means the
+            client speaks exactly `protocol_version`.
+        capabilities:
+          type: array
+          items: { type: string }
+          description: |
+            Optional behaviours the client implements. Names the server does
+            not recognise are ignored rather than rejected.
+        client_version:
+          type: string
+          description: |
+            The client release string. Recorded for diagnostics and fleet
+            visibility only; it never affects the outcome.
+
+    NegotiateResponse:
+      type: object
+      required: [protocol_version, capabilities, server_version]
+      properties:
+        protocol_version:
+          type: integer
+          description: The version both sides will use.
+        capabilities:
+          type: array
+          items: { type: string }
+          description: |
+            The behaviours both sides implement. A client must not use
+            anything absent from this list.
+        server_version:
+          type: string
+
+    ErrorCode:
+      type: string
+      description: |
+        A stable, machine-readable classification. Codes may be added but are
+        never renamed or repurposed, so branching on them is safe.
+      enum:
+        - bad_request
+        - unauthorized
+        - forbidden
+        - not_found
+        - conflict
+        - payload_too_large
+        - rate_limited
+        - unsupported_protocol_version
+        - not_implemented
+        - unavailable
+        - internal
+
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code: { $ref: "#/components/schemas/ErrorCode" }
+        message:
+          type: string
+          description: |
+            A human-readable explanation, safe to show an operator. It never
+            contains secrets, key material or internal stack detail — and it
+            may change at any time, so do not parse it.
+        details:
+          type: object
+          additionalProperties: { type: string }
+          description: |
+            Structured, code-specific context: the field that failed
+            validation, the roadmap phase behind a `not_implemented`, and so
+            on.
+        request_id:
+          type: string
+          description: |
+            Correlates this response with the server log. Also returned in the
+            `X-Request-Id` header. Quote it in a bug report.
+          examples: [req_4KQZ9V3B2N7XR8T0YCFHJM]
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error: { $ref: "#/components/schemas/Error" }

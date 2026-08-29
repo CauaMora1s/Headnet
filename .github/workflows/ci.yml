@@ -1,0 +1,285 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # Allow a maintainer to re-run the pipeline against an unchanged tree, which
+  # is how a dependency-driven failure gets confirmed.
+  workflow_dispatch:
+
+# A new push to a branch makes the previous run pointless. Cancelling it keeps
+# the queue short without ever cancelling a run against main.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+# Read-only by default. A workflow that cannot write cannot be turned into a
+# supply-chain foothold by a compromised action.
+permissions:
+  contents: read
+
+env:
+  # The SQLite driver is pure Go, so everything below builds and cross-compiles
+  # without a C toolchain. The race detector is the one exception and enables
+  # cgo explicitly.
+  CGO_ENABLED: 0
+
+jobs:
+  go-lint:
+    name: Go lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          # Read the version from go.mod so the toolchain can never drift from
+          # what the module actually requires.
+          go-version-file: go.mod
+          cache: true
+
+      - name: Check formatting
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "These files are not gofmt-formatted:"
+            echo "$unformatted"
+            echo
+            echo "Run 'make fmt' (or .\\scripts\\dev.ps1 fmt on Windows)."
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: Verify the module is tidy
+        run: |
+          go mod tidy
+          if ! git diff --quiet go.mod go.sum; then
+            echo "go.mod or go.sum is not tidy. Run 'go mod tidy' and commit the result."
+            git diff go.mod go.sum
+            exit 1
+          fi
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: v2.1.0
+
+  go-test:
+    name: Go test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # The client will eventually manage network interfaces on all three
+        # platforms, so the control-plane code is tested on all three from the
+        # start rather than discovering path and signal differences later.
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Test
+        run: go test -count=1 -shuffle=on ./...
+
+  go-test-race:
+    name: Go test (race detector)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # The race detector requires cgo, so this is the one job that turns it
+      # on. It is worth its own job: the control plane is concurrent by nature
+      # and a data race here would corrupt shared network state.
+      - name: Test with the race detector
+        env:
+          CGO_ENABLED: 1
+        run: go test -race -count=1 ./...
+
+  go-build:
+    name: Go build (${{ matrix.goos }}/${{ matrix.goarch }})
+    runs-on: ubuntu-latest
+    needs: [go-lint]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { goos: linux, goarch: amd64 }
+          - { goos: linux, goarch: arm64 }
+          - { goos: linux, goarch: arm, goarm: "7" } # Raspberry Pi and similar
+          - { goos: darwin, goarch: amd64 }
+          - { goos: darwin, goarch: arm64 }
+          - { goos: windows, goarch: amd64 }
+          - { goos: windows, goarch: arm64 }
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build every binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          GOARM: ${{ matrix.goarm }}
+        run: |
+          go build -trimpath -o /dev/null ./apps/server
+          go build -trimpath -o /dev/null ./apps/cli
+
+  web:
+    name: Web UI
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint and format check
+        run: pnpm --filter @headnet/web lint
+
+      - name: Type check
+        run: pnpm --filter @headnet/web check
+
+      - name: Test
+        run: pnpm --filter @headnet/web test
+
+      - name: Build
+        run: pnpm --filter @headnet/web build
+
+  smoke:
+    name: End-to-end smoke test
+    runs-on: ubuntu-latest
+    needs: [go-test]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build
+        run: |
+          go build -o bin/headnet-server ./apps/server
+          go build -o bin/headnet ./apps/cli
+
+      # Proves that a fresh install actually comes up: the binary starts, the
+      # database is created and migrated, and the documented endpoints answer.
+      # Unit tests cannot catch a broken migration embed or a bad default.
+      - name: Start the control plane
+        run: |
+          HEADNET_DATABASE_PATH=./data/ci.db \
+          HEADNET_SERVER_LISTEN=127.0.0.1:8080 \
+          ./bin/headnet-server > server.log 2>&1 &
+          for _ in $(seq 1 60); do
+            curl -fsS http://127.0.0.1:8080/live >/dev/null 2>&1 && exit 0
+            sleep 0.5
+          done
+          echo "The server never became ready:"
+          cat server.log
+          exit 1
+
+      - name: Check the documented endpoints
+        run: |
+          set -euo pipefail
+
+          echo "--- /health"
+          curl -fsS http://127.0.0.1:8080/health | tee health.json
+          grep -q '"status":"ok"' health.json
+
+          echo "--- /ready"
+          curl -fsS http://127.0.0.1:8080/ready > /dev/null
+
+          echo "--- /api/v1/version"
+          curl -fsS http://127.0.0.1:8080/api/v1/version | tee version.json
+          grep -q '"protocol_version"' version.json
+
+          echo "--- protocol negotiation"
+          curl -fsS -X POST http://127.0.0.1:8080/api/v1/protocol/negotiate \
+            -H 'Content-Type: application/json' \
+            -d '{"protocol_version":1,"capabilities":["protocol.negotiation"]}' | tee negotiate.json
+          grep -q '"protocol_version":1' negotiate.json
+
+          echo "--- unimplemented endpoints must not answer"
+          status=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/api/v1/devices)
+          if [ "$status" != "404" ]; then
+            echo "GET /api/v1/devices returned $status; unbuilt features must not respond"
+            exit 1
+          fi
+
+      - name: Check the CLI reports honestly
+        run: |
+          set -euo pipefail
+
+          ./bin/headnet version
+          ./bin/headnet diagnostics -server http://127.0.0.1:8080 -json | tee diag.json
+
+          # An unimplemented subsystem must never be reported as passing.
+          python3 - <<'PY'
+          import json, sys
+          report = json.load(open('diag.json'))
+          unbuilt = {'Client daemon', 'WireGuard interface',
+                     'Direct peer connectivity', 'Relay fallback'}
+          for check in report['checks']:
+              if check['name'] in unbuilt and check['state'] != 'skipped':
+                  sys.exit(f"{check['name']} reported {check['state']}, want skipped")
+          print('Every unbuilt subsystem is reported as skipped.')
+          PY
+
+          # `connect` must fail, not silently succeed.
+          if ./bin/headnet connect; then
+            echo "headnet connect succeeded, but no VPN implementation exists"
+            exit 1
+          fi
+
+      - name: Show the server log on failure
+        if: failure()
+        run: cat server.log
+
+  docker:
+    name: Docker image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      # Build only: nothing is pushed from CI. Publishing is a release
+      # concern and needs credentials this workflow deliberately lacks.
+      - name: Build the image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/docker/Dockerfile
+          push: false
+          load: true
+          tags: headnet/headnet:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Verify the image runs
+        run: |
+          docker run --rm headnet/headnet:ci -version

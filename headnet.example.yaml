@@ -1,0 +1,117 @@
+# Headnet control-plane configuration.
+#
+# Copy this file to headnet.yaml and edit it, or leave it alone entirely:
+# every value below is the built-in default, so an empty configuration file is
+# a valid one. Environment variables override the file; see .env.example.
+#
+# Secrets do not belong in this file. The one field that normally carries a
+# credential — database.dsn — should be supplied through the environment
+# instead, so that this file can be committed to your own configuration
+# management without leaking anything.
+#
+# Full reference: docs/configuration.md
+
+# development relaxes transport checks so the server runs over plain HTTP on a
+# laptop. production enforces them and refuses to start with an insecure
+# base_url unless you opt in explicitly.
+environment: development
+
+server:
+  # Address to bind. An empty host binds every interface.
+  listen: ":8080"
+
+  # The URL your users and devices actually reach this server on. Enrollment
+  # and OIDC redirects are built from it, so it must be the public address,
+  # not the bind address.
+  base_url: "http://localhost:8080"
+
+  # Permit a plain-HTTP base_url in production. Set this only when TLS is
+  # terminated by a reverse proxy in front of this server; without TLS
+  # somewhere, enrollment credentials and session cookies travel in the clear.
+  allow_insecure_http: false
+
+  read_timeout: 15s
+  write_timeout: 30s
+  idle_timeout: 120s
+
+  # How long a graceful shutdown waits for in-flight requests.
+  shutdown_timeout: 20s
+
+  # Maximum request body size, in bytes. This is a denial-of-service control.
+  max_body_bytes: 1048576
+
+database:
+  # sqlite is the easiest installation and is the right choice for a home
+  # server, a NAS or a small team. postgres is recommended for larger or
+  # highly-available deployments.
+  driver: sqlite
+
+  # SQLite only. The directory is created if it does not exist.
+  path: ./data/headnet.db
+
+  # PostgreSQL only. Supply this through HEADNET_DATABASE_DSN rather than
+  # writing it here: it normally contains a password.
+  # dsn: "postgres://headnet@localhost:5432/headnet?sslmode=require"
+
+  max_open_conns: 25
+  max_idle_conns: 5
+  conn_max_lifetime: 30m
+
+network:
+  # The address pool devices are numbered from.
+  #
+  # The default sits inside 100.64.0.0/10, the carrier-grade NAT range. That
+  # is the conventional choice for an overlay network because it is almost
+  # never present on a home or office LAN, so it rarely collides with the
+  # networks your users are already on.
+  #
+  # Changing this after devices have been enrolled requires re-addressing
+  # every one of them. Choose it before you roll out.
+  ipv4_cidr: "100.100.0.0/16"
+
+  # Optional IPv6 pool, from the unique-local range. Set it to an empty string
+  # for an IPv4-only network.
+  ipv6_cidr: "fd7a:115c:a1e0::/48"
+
+auth:
+  # Enabled authentication backends, in the order they are offered.
+  # Supported: local, oidc.
+  #
+  # Note: authentication is not implemented yet (Phase 1). This setting is
+  # validated but nothing acts on it.
+  providers:
+    - local
+
+relay:
+  # Advertise a relay to clients for use when a direct peer-to-peer connection
+  # is impossible.
+  #
+  # Note: the relay is not implemented yet (Phase 5).
+  enabled: false
+
+log:
+  # debug, info, warn or error.
+  level: info
+  # json for production and log shippers, text for reading in a terminal.
+  format: json
+  # Record the file and line of each log call. Useful while developing.
+  add_source: false
+
+rate_limit:
+  # On by default. Several endpoints must remain unauthenticated — login,
+  # enrollment, protocol negotiation — and an internet-facing control plane
+  # needs a brute-force ceiling before it needs anything else.
+  #
+  # Behind a reverse proxy every request appears to come from the proxy, so
+  # apply per-client limits there as well. See docs/deployment.md.
+  enabled: true
+  requests_per_minute: 120
+  burst: 30
+
+observability:
+  # Exposes /metrics. The endpoint is unauthenticated, so bind it to a private
+  # interface or put it behind your proxy before turning it on.
+  #
+  # Note: Prometheus metrics are not implemented yet (Phase 12). With this
+  # enabled, /metrics returns 501 rather than a misleading empty page.
+  metrics_enabled: false

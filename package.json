@@ -1,0 +1,24 @@
+{
+  "name": "headnet",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Headnet monorepo root. The Go modules are built with the Makefile; this file exists only to drive the frontend workspaces.",
+  "license": "AGPL-3.0-or-later",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @headnet/web dev",
+    "build": "pnpm --filter @headnet/web build",
+    "test": "pnpm --filter @headnet/web test",
+    "lint": "pnpm --filter @headnet/web lint",
+    "format": "pnpm --filter @headnet/web format",
+    "check": "pnpm --filter @headnet/web check"
+  },
+  "packageManager": "pnpm@10.14.0",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
+}
