@@ -138,11 +138,31 @@ type NetworkConfig struct {
 	IPv6CIDR string `yaml:"ipv6_cidr" env:"NETWORK_IPV6_CIDR"`
 }
 
-// AuthConfig selects the enabled authentication backends.
+// AuthConfig selects the enabled authentication backends and the session
+// policy.
 type AuthConfig struct {
 	// Providers lists the enabled backends, in the order they are offered.
 	Providers []AuthProvider `yaml:"providers" env:"AUTH_PROVIDERS"`
+	// SessionLifetime is the absolute maximum age of a session, however
+	// actively it is used. It is the upper bound on how long a stolen browser
+	// profile stays useful without the password.
+	SessionLifetime time.Duration `yaml:"session_lifetime" env:"AUTH_SESSION_LIFETIME"`
+	// SessionIdleTimeout ends a session that has gone unused for this long.
+	// Zero disables idle expiry, leaving only the absolute lifetime.
+	SessionIdleTimeout time.Duration `yaml:"session_idle_timeout" env:"AUTH_SESSION_IDLE_TIMEOUT"`
+	// MinPasswordLength is the shortest password accepted. It may be raised
+	// but not lowered past the built-in floor.
+	MinPasswordLength int `yaml:"min_password_length" env:"AUTH_MIN_PASSWORD_LENGTH"`
 }
+
+// PasswordFloor is the shortest password Headnet will ever accept, whatever
+// the configuration says.
+//
+// It mirrors auth.MinPasswordLength, which is the value actually enforced.
+// The constant is duplicated rather than imported to keep internal/config free
+// of a dependency on a domain package; TestPasswordFloorMatchesAuth asserts
+// the two agree.
+const PasswordFloor = 12
 
 // RelayConfig controls the bundled relay coordination. The relay itself is a
 // separate component; this only says whether the control plane advertises one.
@@ -171,6 +191,14 @@ type RateLimitConfig struct {
 	RequestsPerMinute int `yaml:"requests_per_minute" env:"RATE_LIMIT_REQUESTS_PER_MINUTE"`
 	// Burst is how far above the sustained rate a client may spike.
 	Burst int `yaml:"burst" env:"RATE_LIMIT_BURST"`
+	// AuthRequestsPerMinute is the sustained budget for /api/v1/auth/*.
+	//
+	// Authentication needs a tighter ceiling than the rest of the API: it is
+	// unauthenticated by necessity, and it is the one endpoint where guessing
+	// repeatedly is the whole attack.
+	AuthRequestsPerMinute int `yaml:"auth_requests_per_minute" env:"RATE_LIMIT_AUTH_REQUESTS_PER_MINUTE"`
+	// AuthBurst is the burst allowance for authentication endpoints.
+	AuthBurst int `yaml:"auth_burst" env:"RATE_LIMIT_AUTH_BURST"`
 }
 
 // ObservabilityConfig controls the metrics surface.
@@ -208,7 +236,10 @@ func Default() *Config {
 			IPv6CIDR: "fd7a:115c:a1e0::/48",
 		},
 		Auth: AuthConfig{
-			Providers: []AuthProvider{ProviderLocal},
+			Providers:          []AuthProvider{ProviderLocal},
+			SessionLifetime:    30 * 24 * time.Hour,
+			SessionIdleTimeout: 7 * 24 * time.Hour,
+			MinPasswordLength:  PasswordFloor,
 		},
 		Relay: RelayConfig{Enabled: false},
 		Log: LogConfig{
@@ -216,9 +247,11 @@ func Default() *Config {
 			Format: "json",
 		},
 		RateLimit: RateLimitConfig{
-			Enabled:           true,
-			RequestsPerMinute: 120,
-			Burst:             30,
+			Enabled:               true,
+			RequestsPerMinute:     120,
+			Burst:                 30,
+			AuthRequestsPerMinute: 10,
+			AuthBurst:             5,
 		},
 		Observability: ObservabilityConfig{MetricsEnabled: false},
 	}
@@ -482,6 +515,25 @@ func (a AuthConfig) validate() error {
 	}
 
 	var problems []error
+
+	if a.SessionLifetime <= 0 {
+		problems = append(problems, fmt.Errorf(
+			"auth.session_lifetime: must be greater than zero, got %s", a.SessionLifetime))
+	}
+	if a.SessionIdleTimeout < 0 {
+		problems = append(problems, fmt.Errorf(
+			"auth.session_idle_timeout: must not be negative, got %s", a.SessionIdleTimeout))
+	}
+	if a.SessionIdleTimeout > 0 && a.SessionLifetime > 0 && a.SessionIdleTimeout > a.SessionLifetime {
+		problems = append(problems, fmt.Errorf(
+			"auth.session_idle_timeout (%s): must not exceed auth.session_lifetime (%s), or it can never take effect",
+			a.SessionIdleTimeout, a.SessionLifetime))
+	}
+	if a.MinPasswordLength < PasswordFloor {
+		problems = append(problems, fmt.Errorf(
+			"auth.min_password_length: must be at least %d, got %d", PasswordFloor, a.MinPasswordLength))
+	}
+
 	seen := make(map[AuthProvider]struct{}, len(a.Providers))
 	for _, p := range a.Providers {
 		switch p {
@@ -524,6 +576,21 @@ func (r RateLimitConfig) validate() error {
 	if r.Burst <= 0 {
 		problems = append(problems, fmt.Errorf(
 			"rate_limit.burst: must be greater than zero when the limiter is enabled, got %d", r.Burst))
+	}
+	if r.AuthRequestsPerMinute <= 0 {
+		problems = append(problems, fmt.Errorf(
+			"rate_limit.auth_requests_per_minute: must be greater than zero when the limiter is enabled, got %d",
+			r.AuthRequestsPerMinute))
+	}
+	if r.AuthBurst <= 0 {
+		problems = append(problems, fmt.Errorf(
+			"rate_limit.auth_burst: must be greater than zero when the limiter is enabled, got %d", r.AuthBurst))
+	}
+	if r.AuthRequestsPerMinute > r.RequestsPerMinute {
+		problems = append(problems, fmt.Errorf(
+			"rate_limit.auth_requests_per_minute (%d): must not exceed rate_limit.requests_per_minute (%d); "+
+				"authentication needs a tighter ceiling than the rest of the API, not a looser one",
+			r.AuthRequestsPerMinute, r.RequestsPerMinute))
 	}
 	return errors.Join(problems...)
 }

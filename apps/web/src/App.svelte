@@ -176,8 +176,9 @@
   <section aria-labelledby="planned-heading">
     <h2 id="planned-heading" class="mb-1 text-lg font-medium">Not built yet</h2>
     <p class="mb-4 text-sm text-slate-600 dark:text-slate-400">
-      These areas are planned but not implemented. They are listed rather than shown as empty
-      screens, so that nothing here can be mistaken for a working feature.
+      These areas have no screens yet. They are listed rather than shown as empty tables, so that
+      nothing here can be mistaken for a working feature. A few already work over the API and are
+      marked as such &mdash; claiming those were missing would be just as inaccurate as the reverse.
     </p>
 
     <ul class="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -186,9 +187,11 @@
           <div class="flex items-baseline justify-between gap-3">
             <span class="font-medium text-slate-700 dark:text-slate-300">{area.name}</span>
             <span
-              class="shrink-0 rounded bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-400"
+              class="shrink-0 rounded px-2 py-0.5 text-xs font-medium {area.status === 'api-only'
+                ? 'bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300'
+                : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'}"
             >
-              {area.phase}
+              {area.status === 'api-only' ? 'API only' : area.phase}
             </span>
           </div>
           <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{area.summary}</p>

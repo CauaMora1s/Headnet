@@ -77,10 +77,25 @@ auth:
   # Enabled authentication backends, in the order they are offered.
   # Supported: local, oidc.
   #
-  # Note: authentication is not implemented yet (Phase 1). This setting is
-  # validated but nothing acts on it.
+  # Note: only "local" is implemented. OIDC is validated but not yet acted on.
   providers:
     - local
+
+  # How long a session lasts regardless of how actively it is used. This is the
+  # upper bound on how long a stolen browser profile stays useful without the
+  # password.
+  session_lifetime: 720h
+
+  # A session unused for this long ends early. Set it to 0 to rely on the
+  # absolute lifetime alone. It must not exceed session_lifetime.
+  session_idle_timeout: 168h
+
+  # Shortest accepted password. It may be raised but never lowered below the
+  # built-in floor of 12.
+  #
+  # Length is asked for rather than composition rules, which mostly produce
+  # "Password1!" and are worse than a passphrase.
+  min_password_length: 12
 
 relay:
   # Advertise a relay to clients for use when a direct peer-to-peer connection
@@ -107,6 +122,12 @@ rate_limit:
   enabled: true
   requests_per_minute: 120
   burst: 30
+
+  # Authentication endpoints get a much tighter budget. They are
+  # unauthenticated by necessity, and repeated guessing is the whole attack
+  # against them. This must not exceed requests_per_minute.
+  auth_requests_per_minute: 10
+  auth_burst: 5
 
 observability:
   # Exposes /metrics. The endpoint is unauthenticated, so bind it to a private

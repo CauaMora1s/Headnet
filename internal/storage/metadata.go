@@ -99,3 +99,46 @@ func InstanceID(ctx context.Context, db *DB, now time.Time) (string, error) {
 	}
 	return id, nil
 }
+
+// KeyBootstrapClaimedAt records when the first administrator account was
+// created. Its presence is what marks an installation as claimed.
+const KeyBootstrapClaimedAt = "bootstrap_claimed_at"
+
+// ClaimBootstrap attempts to mark the installation as claimed, reporting
+// whether this caller was the one that did it.
+//
+// The insert is conditional, so exactly one caller can ever win, however many
+// try at once. That matters: the first-run flow is open until it is claimed,
+// and two simultaneous requests both creating an administrator would be a very
+// bad way to discover the check was not atomic.
+//
+// It runs inside the caller's transaction so the claim and the account it
+// authorises are committed together or not at all.
+func ClaimBootstrap(ctx context.Context, db *DB, tx *sql.Tx, now time.Time) (bool, error) {
+	result, err := tx.ExecContext(ctx, db.Rebind(`
+		INSERT INTO server_metadata (key, value, created_at, updated_at)
+		VALUES (?, ?, ?, ?)
+		ON CONFLICT (key) DO NOTHING`),
+		KeyBootstrapClaimedAt, now.UTC().Format(time.RFC3339), now, now)
+	if err != nil {
+		return false, fmt.Errorf("claiming the installation: %w", err)
+	}
+
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("claiming the installation: %w", err)
+	}
+	return affected == 1, nil
+}
+
+// BootstrapClaimed reports whether the installation has an administrator.
+func BootstrapClaimed(ctx context.Context, db *DB) (bool, error) {
+	_, err := GetMetadata(ctx, db, KeyBootstrapClaimedAt)
+	switch {
+	case errors.Is(err, ErrMetadataNotFound):
+		return false, nil
+	case err != nil:
+		return false, err
+	}
+	return true, nil
+}

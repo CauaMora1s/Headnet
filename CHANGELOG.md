@@ -25,6 +25,28 @@ No release has been tagged yet. Everything below is on `main`.
 
 **Identity**
 
+- Sign-in, sign-out and server-side sessions, in a `Secure` `HttpOnly`
+  `SameSite=Lax` cookie. `Secure` follows the base URL scheme, so a
+  plain-HTTP development server still works. Neither the session token nor the
+  CSRF token is stored in recoverable form, so a stolen database yields
+  nothing replayable. Logging out revokes immediately rather than waiting for
+  an expiry.
+- CSRF protection on every state-changing request. The token is bound to the
+  session server-side rather than merely matched against a cookie, so an
+  attacker who can set a cookie on the victim's domain still cannot produce a
+  valid pair.
+- First-run bootstrap: the first account is created through the API and is
+  necessarily an administrator. The claim is exactly-once and atomic, so
+  concurrent requests cannot both succeed, and a rejected account does not
+  consume the claim. **The endpoint is open until claimed** — a deliberate
+  trade-off for the deploy-then-create-an-account flow, mitigated by a warning
+  logged on every start until it is closed, an audited claim, and the tighter
+  authentication rate limit. See the threat model.
+- A failed sign-in cannot reveal whether an account exists: an unregistered
+  address is verified against a dummy hash so the work, the message and the
+  code all match a wrong password.
+- A separate, tighter rate limit for `/api/v1/auth/*`, because those endpoints
+  are unauthenticated by necessity and repeated guessing is the whole attack.
 - User accounts, with Argon2id password hashing at current OWASP parameters.
   The parameters are stored alongside each hash in PHC string format, so they
   can be raised later without invalidating existing passwords; a login against

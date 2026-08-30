@@ -1,8 +1,8 @@
 # Authentication
 
-> **Partly implemented.** Accounts and password storage exist and are
-> described below as built. Sessions, login, first-run bootstrap and OIDC are
-> still being built; each section says which.
+> **Partly implemented.** Accounts, password storage, sessions, login and
+> first-run bootstrap all work. OIDC, MFA and device enrolment do not; each
+> section says which.
 
 ---
 
@@ -123,6 +123,8 @@ must be the URL users actually reach — not the bind address.
 
 ## Sessions
 
+**Implemented.**
+
 Server-side, in a cookie:
 
 ```
@@ -136,24 +138,73 @@ session store with extra steps and worse ergonomics. The performance argument
 for stateless tokens does not apply to a control plane serving tens of
 requests per second.
 
+`Secure` is set whenever the deployment's base URL is HTTPS — not
+unconditionally, because a `Secure` cookie on a plain-HTTP development server
+is simply never sent, and the developer sees a login that silently does not
+work.
+
+`SameSite=Lax` rather than `Strict`: `Strict` would drop the cookie when a
+user follows a link into the UI from anywhere else, which reads as being
+randomly signed out. `Lax` still withholds it from cross-site POSTs, and the
+CSRF token covers what remains.
+
+Two durations bound a session. `auth.session_lifetime` is absolute, and
+`auth.session_idle_timeout` ends one that has gone unused. The idle window
+slides on use, but the recorded timestamp is only written back once a minute:
+updating it on every request would mean a database write per request, which on
+SQLite — held to a single connection — would serialise the whole server behind
+session bookkeeping.
+
 Cookie authentication means **CSRF protection is mandatory** on every
-non-idempotent request: a double-submit token, checked server-side.
+non-idempotent request. Headnet issues a CSRF token at sign-in, returns it in
+the response body, and sets it as the readable `headnet_csrf` cookie; clients
+echo it in `X-CSRF-Token`.
+
+The token is **bound to the session**, not merely compared with a cookie.
+Plain double-submit — trusting that a cookie and a header match — can be
+defeated by an attacker who is able to set a cookie on the victim's domain,
+because they can then choose both halves. Storing a hash of the token
+server-side means only a token this server issued for this session will pass.
+
+Safe methods are exempt: a `GET` must not change state, and requiring a header
+on ordinary navigation would break the UI for no benefit.
 
 ---
 
 ## First-run bootstrap
 
-The window between "the server starts" and "an administrator exists" is a real
-vulnerability if it is handled carelessly — an unclaimed installation on the
-public internet is an open invitation.
+**Implemented.**
 
-The design:
+`POST /api/v1/auth/bootstrap` creates the first account on a fresh
+installation and signs it in. It is necessarily an administrator: there is
+nobody else to grant it the role later.
 
-- The first account can be claimed exactly **once**, atomically, so two
-  simultaneous attempts cannot both succeed.
-- Until it is claimed, the server serves nothing but the bootstrap flow.
-- The bootstrap endpoint is rate-limited like everything else.
-- Claiming it is audited.
+- The claim is exactly **once**, and atomic. The metadata row that marks the
+  installation as claimed and the account itself are inserted in one
+  transaction, and the row insert is conditional, so however many requests
+  arrive together only one can succeed. The rest get `409`.
+- A **rejected** account — a password that is too short, say — does not
+  consume the claim. Otherwise one malformed request would lock the server out
+  of ever being set up.
+- `GET /api/v1/auth/status` reports whether a claim is still needed, so a
+  client knows which form to show before it has any credentials.
+
+### The window this leaves open
+
+**Until it is claimed, whoever reaches the server first becomes its
+administrator.** That is the cost of the "deploy, open the web UI, create an
+account" flow, and it is a real one.
+
+It is mitigated by being made loud rather than being hidden:
+
+- The server logs a **warning on every start** while the installation is
+  unclaimed.
+- The claim is audited with the source address.
+- The endpoint sits behind the tighter authentication rate limit.
+
+**Claim your installation immediately after deploying it, and do not expose it
+publicly until you have.** See the
+[threat model](security/threat-model.md#418-an-unclaimed-installation).
 
 ---
 

@@ -19,6 +19,7 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/CauaMora1s/Headnet/internal/auth"
 	"github.com/CauaMora1s/Headnet/internal/config"
 	"github.com/CauaMora1s/Headnet/internal/httpapi"
 	"github.com/CauaMora1s/Headnet/internal/storage"
@@ -49,6 +50,21 @@ type Server struct {
 	instanceID string
 	startedAt  time.Time
 	handler    http.Handler
+
+	users    *auth.UserStore
+	sessions *auth.SessionStore
+
+	// dummyHash is verified against when a sign-in names an account that does
+	// not exist, so the attempt costs the same as one that does. Computed once
+	// at start-up because Argon2 is deliberately slow.
+	dummyHash string
+
+	// authLimiter is the tighter budget for /api/v1/auth/*.
+	authLimiter *httpapi.Limiter
+
+	// secureCookies marks session cookies Secure. It follows the base URL
+	// scheme, so a plain-HTTP development server still works.
+	secureCookies bool
 }
 
 // New builds a server and its route table.
@@ -72,6 +88,13 @@ func New(opts Options) (*Server, error) {
 		clock = shared.SystemClock
 	}
 
+	// Precomputed once: Argon2 is deliberately expensive, and this is used on
+	// every sign-in attempt that names an unknown account.
+	dummyHash, err := auth.DummyHash()
+	if err != nil {
+		return nil, fmt.Errorf("server: preparing the authentication timing defence: %w", err)
+	}
+
 	s := &Server{
 		cfg:        opts.Config,
 		db:         opts.DB,
@@ -79,7 +102,24 @@ func New(opts Options) (*Server, error) {
 		clock:      clock,
 		instanceID: opts.InstanceID,
 		startedAt:  clock.Now(),
+		dummyHash:  dummyHash,
+		users: auth.NewUserStore(opts.DB, auth.StoreOptions{
+			MinPasswordLength: opts.Config.Auth.MinPasswordLength,
+		}),
+		sessions: auth.NewSessionStore(opts.DB, auth.SessionOptions{
+			Lifetime:    opts.Config.Auth.SessionLifetime,
+			IdleTimeout: opts.Config.Auth.SessionIdleTimeout,
+		}),
 	}
+
+	if u, err := url.Parse(opts.Config.Server.BaseURL); err == nil && u.Scheme == "https" {
+		s.secureCookies = true
+	}
+	if opts.Config.RateLimit.Enabled {
+		s.authLimiter = httpapi.NewLimiter(
+			opts.Config.RateLimit.AuthRequestsPerMinute, opts.Config.RateLimit.AuthBurst)
+	}
+
 	s.handler = s.buildHandler()
 	return s, nil
 }
@@ -111,11 +151,9 @@ func (s *Server) buildHandler() http.Handler {
 	}
 
 	// HSTS is only meaningful, and only safe, when clients genuinely reach
-	// this deployment over HTTPS.
-	hsts := false
-	if u, err := url.Parse(s.cfg.Server.BaseURL); err == nil && u.Scheme == "https" {
-		hsts = true
-	}
+	// this deployment over HTTPS — the same condition that marks cookies
+	// Secure.
+	hsts := s.secureCookies
 
 	return httpapi.Chain(
 		s.routes(),
@@ -157,6 +195,8 @@ func (s *Server) Serve(ctx context.Context, listener net.Listener) error {
 		ReadHeaderTimeout: 10 * time.Second,
 		ErrorLog:          slog.NewLogLogger(s.logger.Handler(), slog.LevelWarn),
 	}
+
+	s.warnIfUnclaimed(ctx)
 
 	s.logger.InfoContext(ctx, "control plane listening",
 		"address", listener.Addr().String(),
@@ -202,6 +242,30 @@ func (s *Server) Serve(ctx context.Context, listener net.Listener) error {
 	}
 	s.logger.InfoContext(ctx, "shutdown complete")
 	return nil
+}
+
+// warnIfUnclaimed says loudly, on every start, that the installation has no
+// administrator yet.
+//
+// Until it is claimed, the bootstrap endpoint is open, and whoever reaches it
+// first becomes the administrator of this network. That window is the accepted
+// cost of the "deploy, open the web UI, create an account" flow, so the least
+// this server can do is refuse to be quiet about it.
+func (s *Server) warnIfUnclaimed(ctx context.Context) {
+	claimed, err := storage.BootstrapClaimed(ctx, s.db)
+	if err != nil {
+		s.logger.ErrorContext(ctx, "could not determine whether this installation has been claimed",
+			"error", err)
+		return
+	}
+	if claimed {
+		return
+	}
+	s.logger.WarnContext(ctx,
+		"this installation has no administrator yet and anyone who reaches it can claim it; "+
+			"open the web UI and create your account now, and do not expose this server publicly until you have",
+		"base_url", s.cfg.Server.BaseURL,
+	)
 }
 
 // uptime is how long this process has been serving.

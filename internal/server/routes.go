@@ -34,6 +34,23 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET "+api.BasePath+"/version", s.handleVersion)
 	mux.HandleFunc("POST "+api.BasePath+"/protocol/negotiate", s.handleNegotiate)
 
+	// Authentication. These three are unauthenticated by necessity, which is
+	// exactly why they carry the tighter rate limit: repeated guessing is the
+	// whole attack against them.
+	mux.Handle("GET "+api.BasePath+"/auth/status",
+		s.rateLimitAuth(http.HandlerFunc(s.handleAuthStatus)))
+	mux.Handle("POST "+api.BasePath+"/auth/login",
+		s.rateLimitAuth(http.HandlerFunc(s.handleLogin)))
+	mux.Handle("POST "+api.BasePath+"/auth/bootstrap",
+		s.rateLimitAuth(http.HandlerFunc(s.handleBootstrap)))
+
+	// Logout needs a session and a CSRF token: signing someone out from
+	// another site is a small attack, but it is still one.
+	mux.Handle("POST "+api.BasePath+"/auth/logout",
+		s.authenticated(http.HandlerFunc(s.handleLogout), false))
+	mux.Handle("GET "+api.BasePath+"/auth/session",
+		s.authenticated(http.HandlerFunc(s.handleSession), false))
+
 	// Anything unmatched gets the standard envelope rather than Go's
 	// plain-text default, so a client only ever has to parse one error shape.
 	mux.Handle("/", httpapi.NotFoundHandler())

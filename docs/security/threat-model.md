@@ -317,6 +317,30 @@ updates so that reviewing them stays meaningful rather than becoming a
 rubber-stamp. Reproducible builds with `-trimpath`. A distroless container
 image with no shell to pivot into.
 
+### 4.18 An unclaimed installation
+
+**Threat.** A server is deployed and reachable before its operator has created
+an account. Whoever finds it first claims it, and becomes the administrator of
+that network.
+
+**Why the window exists.** The first-run flow is open by design. The
+alternatives — a one-time token printed to the server log, or a command that
+must be run on the host — close the window but cost the "deploy, open the web
+UI, create an account" experience the project is built around. That trade was
+made deliberately, and it is recorded here rather than glossed over.
+
+**Mitigations (implemented).** The claim is exactly-once and atomic, so it
+cannot be won twice. The server logs a warning on **every start** while the
+installation is unclaimed. The claim is audited with its source address. The
+endpoint is behind the tighter authentication rate limit.
+
+**Residual risk.** Real, and entirely in the operator's hands: claim the
+installation immediately, and do not publish the address until you have. An
+attacker who wins the race owns the network.
+
+**Revisit if** deployments in the wild are found unclaimed in practice; a
+one-time bootstrap token would close it at the cost of one extra step.
+
 ---
 
 ## 5. What happens if...
@@ -381,6 +405,10 @@ only partly built.
 7. Setup keys are revocable, expirable and scoped.
 8. No secret is ever written to a log.
 9. An unimplemented feature never reports success.
+10. A password is never stored, logged or returned — only an Argon2id hash.
+11. A session token is never stored in recoverable form, and revoking a
+    session stops it working immediately.
+12. A failed sign-in cannot reveal whether an account exists.
 
 Property 9 is a security property, not a style preference: a VPN client that
 claims to be connected when it is not can lead someone to send sensitive
@@ -414,4 +442,4 @@ This model is revisited at the start of every roadmap phase, because each one
 adds attack surface. A phase is not complete until its security considerations
 are reflected here.
 
-Last reviewed: Phase 0.
+Last reviewed: Phase 1, through the authentication core.

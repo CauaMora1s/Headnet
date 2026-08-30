@@ -182,8 +182,8 @@ uniqueness guarantee rather than application logic that races.
 1. ~~IP address management: allocate from the configured pool, never twice,
    reclaim on revocation~~ — done
 2. ~~`users` and password hashing~~ — done
-3. Sessions and the login flow
-4. First-run bootstrap
+3. ~~Sessions and the login flow~~ — done
+4. ~~First-run bootstrap~~ — done
 5. Setup keys
 6. Device registration
 7. Web UI: sign-in, device list, device revocation

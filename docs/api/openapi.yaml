@@ -79,6 +79,24 @@ tags:
       disclose nothing beyond a release string and dependency status.
   - name: Protocol
     description: Build identity and version negotiation.
+  - name: Authentication
+    description: |
+      Sign-in, sessions and first-run setup.
+
+      Sessions are server-side, carried in a `Secure` `HttpOnly` `SameSite=Lax`
+      cookie. They are deliberately not self-contained tokens: when a device is
+      stolen, an administrator has to be able to cut off access immediately,
+      and a stateless token cannot be revoked before it expires.
+
+      Every state-changing request must echo the session's CSRF token in the
+      `X-CSRF-Token` header. The token is issued at sign-in, returned in the
+      response body, and also set as the readable `headnet_csrf` cookie. It is
+      bound to the session server-side, so a token from another session — or
+      one an attacker chose for themselves — will not do.
+
+      These endpoints carry a tighter rate limit than the rest of the API. They
+      are unauthenticated by necessity, and repeated guessing is the whole
+      attack against them.
 
 paths:
   /health:
@@ -305,6 +323,179 @@ paths:
                         server_protocol_version: "3"
         "429": { $ref: "#/components/responses/RateLimited" }
 
+  /api/v1/auth/status:
+    get:
+      tags: [Authentication]
+      summary: Whether the installation needs setting up
+      description: |
+        Tells a client which flow to present before it has any credentials: a
+        sign-in form, or the first-run form.
+
+        Unauthenticated, and deliberately uninformative beyond that. It
+        discloses no account addresses, no configuration and no instance
+        identity.
+      operationId: getAuthStatus
+      security: []
+      responses:
+        "200":
+          description: The current authentication state.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuthStatus" }
+              examples:
+                fresh:
+                  summary: A server nobody has claimed yet
+                  value:
+                    bootstrap_required: true
+                    providers: [local]
+                claimed:
+                  value:
+                    bootstrap_required: false
+                    providers: [local]
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /api/v1/auth/bootstrap:
+    post:
+      tags: [Authentication]
+      summary: Create the first administrator
+      description: |
+        Creates the first account on a fresh installation and signs it in. The
+        account is necessarily an administrator: there is nobody else to grant
+        it the role later.
+
+        **This endpoint is open until it is claimed.** That is a deliberate
+        trade-off in favour of the "deploy, open the web UI, create an account"
+        flow, and it has a real cost: a publicly reachable server that nobody
+        has claimed can be claimed by whoever finds it first. Claim yours
+        immediately, and do not expose the server publicly until you have. The
+        server logs a warning on every start until it is claimed.
+
+        The claim is exactly-once and atomic, so concurrent requests cannot
+        both succeed. A rejected account — a password that is too short, say —
+        does not consume the claim.
+      operationId: bootstrap
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BootstrapRequest" }
+      responses:
+        "201":
+          description: The administrator was created and signed in.
+          headers:
+            Set-Cookie:
+              schema: { type: string }
+              description: Sets `headnet_session` and `headnet_csrf`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Session" }
+        "400":
+          description: The email address or password was rejected.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: The installation already has an administrator.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /api/v1/auth/login:
+    post:
+      tags: [Authentication]
+      summary: Sign in
+      description: |
+        Authenticates an account and issues a session.
+
+        A wrong password and an unregistered address produce an identical
+        response, in content and in timing. Any difference would turn this
+        endpoint into a way to discover which addresses have accounts.
+      operationId: login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LoginRequest" }
+      responses:
+        "200":
+          description: Signed in.
+          headers:
+            Set-Cookie:
+              schema: { type: string }
+              description: Sets `headnet_session` and `headnet_csrf`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Session" }
+        "400":
+          description: The request body was malformed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: The email address or password is incorrect.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              examples:
+                rejected:
+                  value:
+                    error:
+                      code: unauthorized
+                      message: the email address or password is incorrect
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /api/v1/auth/logout:
+    post:
+      tags: [Authentication]
+      summary: Sign out
+      description: |
+        Revokes the session server-side and clears both cookies. It stops
+        working immediately, not at its expiry.
+      operationId: logout
+      security:
+        - sessionCookie: []
+      responses:
+        "204":
+          description: Signed out.
+        "401":
+          description: Not signed in.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: The CSRF token was missing or wrong.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /api/v1/auth/session:
+    get:
+      tags: [Authentication]
+      summary: The current session
+      description: |
+        Returns the signed-in account and when the session expires.
+
+        `csrf_token` is empty here: only a hash of it is stored, so it cannot
+        be handed back after issue. A browser client reads it from the
+        `headnet_csrf` cookie instead.
+      operationId: getSession
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: The caller's session.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Session" }
+        "401":
+          description: Not signed in, or the session has ended.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
 components:
   securitySchemes:
     sessionCookie:
@@ -312,12 +503,15 @@ components:
       in: cookie
       name: headnet_session
       description: |
-        **Not implemented yet** (Phase 1). Server-side sessions in a `Secure`,
-        `HttpOnly`, `SameSite=Lax` cookie.
+        Server-side sessions in a `Secure`, `HttpOnly`, `SameSite=Lax` cookie.
+        `Secure` is set whenever the deployment's base URL is HTTPS.
 
         Sessions are deliberately not stateless tokens: when a device is
         stolen, an administrator must be able to revoke access immediately,
         and a self-contained token cannot be revoked before it expires.
+
+        State-changing requests must additionally carry the `X-CSRF-Token`
+        header. See the Authentication tag.
 
   responses:
     RateLimited:
@@ -515,3 +709,70 @@ components:
       required: [error]
       properties:
         error: { $ref: "#/components/schemas/Error" }
+
+    AuthStatus:
+      type: object
+      required: [bootstrap_required, providers]
+      properties:
+        bootstrap_required:
+          type: boolean
+          description: No account exists yet; the installation is unclaimed.
+        providers:
+          type: array
+          items: { type: string, enum: [local, oidc] }
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, format: password }
+
+    BootstrapRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password:
+          type: string
+          format: password
+          description: |
+            At least `auth.min_password_length` characters, and never fewer
+            than 12 whatever the configuration says. Length is asked for rather
+            than composition rules, which mostly produce `Password1!`.
+        display_name: { type: string }
+
+    User:
+      type: object
+      required: [id, email, role, provider, created_at]
+      description: |
+        An account. There is deliberately no password field of any kind — not
+        the hash, not a placeholder. A schema with somewhere to put one is a
+        schema that will eventually carry one.
+      properties:
+        id:
+          type: string
+          examples: ["usr_4KQZ9V3B2N7XR8T0YCFHJM"]
+        email: { type: string, format: email }
+        display_name: { type: string }
+        role: { type: string, enum: [admin, member] }
+        provider: { type: string, enum: [local, oidc] }
+        created_at: { type: string, format: date-time }
+        last_login_at: { type: string, format: date-time }
+
+    Session:
+      type: object
+      required: [user, csrf_token, expires_at]
+      properties:
+        user: { $ref: "#/components/schemas/User" }
+        csrf_token:
+          type: string
+          description: |
+            Echo this in `X-CSRF-Token` on every state-changing request. It is
+            also set as the readable `headnet_csrf` cookie.
+
+            Empty on `GET /api/v1/auth/session`: only a hash is stored, so it
+            cannot be handed back after issue.
+        expires_at:
+          type: string
+          format: date-time
