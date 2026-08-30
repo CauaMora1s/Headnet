@@ -10,16 +10,13 @@ import (
 	"time"
 
 	"github.com/CauaMora1s/Headnet/internal/storage"
+	"github.com/CauaMora1s/Headnet/internal/storage/storagetest"
 )
 
 // openMemory returns a migrated, isolated in-memory database.
 func openMemory(t *testing.T) *storage.DB {
 	t.Helper()
-	db := openBare(t)
-	if _, err := storage.Migrate(t.Context(), db, nil); err != nil {
-		t.Fatalf("Migrate failed: %v", err)
-	}
-	return db
+	return storagetest.Open(t)
 }
 
 // openBare returns an unmigrated in-memory database.
@@ -37,6 +34,7 @@ func openBare(t *testing.T) *storage.DB {
 }
 
 func TestOpenRejectsUnusableOptions(t *testing.T) {
+	storagetest.SkipUnlessSQLite(t)
 	t.Parallel()
 	tests := []struct {
 		name string
@@ -61,6 +59,7 @@ func TestOpenRejectsUnusableOptions(t *testing.T) {
 }
 
 func TestOpenCreatesTheDatabaseDirectory(t *testing.T) {
+	storagetest.SkipUnlessSQLite(t)
 	// A first-time operator should not have to mkdir before starting the
 	// server for the first time.
 	path := filepath.Join(t.TempDir(), "nested", "deeper", "headnet.db")
@@ -78,13 +77,14 @@ func TestOpenCreatesTheDatabaseDirectory(t *testing.T) {
 		t.Fatalf("Migrate failed: %v", err)
 	}
 	if _, err := db.ExecContext(t.Context(),
-		`INSERT INTO server_metadata (key, value, created_at, updated_at) VALUES ('k','v',?,?)`,
+		db.Rebind(`INSERT INTO server_metadata (key, value, created_at, updated_at) VALUES ('k','v',?,?)`),
 		time.Now(), time.Now()); err != nil {
 		t.Fatalf("the database is not usable after Open: %v", err)
 	}
 }
 
 func TestSQLiteEnforcesForeignKeys(t *testing.T) {
+	storagetest.SkipUnlessSQLite(t)
 	// SQLite leaves foreign keys off by default. Without the pragma, deleting
 	// a user in a later phase would silently orphan its devices.
 	db := openMemory(t)
@@ -98,6 +98,7 @@ func TestSQLiteEnforcesForeignKeys(t *testing.T) {
 }
 
 func TestSQLiteUsesWriteAheadLogging(t *testing.T) {
+	storagetest.SkipUnlessSQLite(t)
 	db := openMemory(t)
 	var mode string
 	if err := db.QueryRowContext(t.Context(), "PRAGMA journal_mode").Scan(&mode); err != nil {
@@ -122,6 +123,7 @@ func TestSQLiteUsesWriteAheadLogging(t *testing.T) {
 }
 
 func TestDriverIsReported(t *testing.T) {
+	storagetest.SkipUnlessSQLite(t)
 	t.Parallel()
 	if got := openBare(t).Driver(); got != storage.DriverSQLite {
 		t.Fatalf("Driver() = %q, want %q", got, storage.DriverSQLite)
@@ -129,6 +131,7 @@ func TestDriverIsReported(t *testing.T) {
 }
 
 func TestInMemoryDatabasesAreIsolated(t *testing.T) {
+	storagetest.SkipUnlessSQLite(t)
 	// Parallel tests must not be able to see each other's schema.
 	first := openMemory(t)
 	second := openBare(t)
@@ -143,6 +146,7 @@ func TestInMemoryDatabasesAreIsolated(t *testing.T) {
 }
 
 func TestRebind(t *testing.T) {
+	storagetest.SkipUnlessSQLite(t)
 	t.Parallel()
 	sqlite := openBare(t)
 
@@ -156,7 +160,7 @@ func TestInTxCommitsOnSuccess(t *testing.T) {
 	db := openMemory(t)
 	err := db.InTx(t.Context(), func(tx *sql.Tx) error {
 		_, err := tx.ExecContext(t.Context(),
-			`INSERT INTO server_metadata (key, value, created_at, updated_at) VALUES ('committed','yes',?,?)`,
+			db.Rebind(`INSERT INTO server_metadata (key, value, created_at, updated_at) VALUES ('committed','yes',?,?)`),
 			time.Now(), time.Now())
 		return err
 	})
@@ -174,7 +178,7 @@ func TestInTxRollsBackOnError(t *testing.T) {
 
 	err := db.InTx(t.Context(), func(tx *sql.Tx) error {
 		if _, err := tx.ExecContext(t.Context(),
-			`INSERT INTO server_metadata (key, value, created_at, updated_at) VALUES ('rolled_back','yes',?,?)`,
+			db.Rebind(`INSERT INTO server_metadata (key, value, created_at, updated_at) VALUES ('rolled_back','yes',?,?)`),
 			time.Now(), time.Now()); err != nil {
 			return err
 		}
@@ -202,7 +206,7 @@ func TestInTxRollsBackOnPanic(t *testing.T) {
 		}()
 		_ = db.InTx(t.Context(), func(tx *sql.Tx) error {
 			_, _ = tx.ExecContext(t.Context(),
-				`INSERT INTO server_metadata (key, value, created_at, updated_at) VALUES ('panicked','yes',?,?)`,
+				db.Rebind(`INSERT INTO server_metadata (key, value, created_at, updated_at) VALUES ('panicked','yes',?,?)`),
 				time.Now(), time.Now())
 			panic("boom")
 		})

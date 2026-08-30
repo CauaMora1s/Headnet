@@ -7,9 +7,11 @@ import (
 	"time"
 
 	"github.com/CauaMora1s/Headnet/internal/storage"
+	"github.com/CauaMora1s/Headnet/internal/storage/storagetest"
 )
 
 func TestEveryDialectShipsTheSameMigrationHistory(t *testing.T) {
+	storagetest.SkipUnlessSQLite(t)
 	t.Parallel()
 	// A migration added for one backend and forgotten for the other is the
 	// classic way a project quietly becomes single-backend.
@@ -34,6 +36,7 @@ func TestEveryDialectShipsTheSameMigrationHistory(t *testing.T) {
 }
 
 func TestMigrationsAreLoadedInOrderAndAreWellFormed(t *testing.T) {
+	storagetest.SkipUnlessSQLite(t)
 	t.Parallel()
 	migrations, err := storage.LoadMigrations(storage.DriverSQLite)
 	if err != nil {
@@ -60,6 +63,7 @@ func TestMigrationsAreLoadedInOrderAndAreWellFormed(t *testing.T) {
 }
 
 func TestLoadMigrationsRejectsAnUnknownDialect(t *testing.T) {
+	storagetest.SkipUnlessSQLite(t)
 	t.Parallel()
 	if _, err := storage.LoadMigrations("mysql"); err == nil {
 		t.Fatal("LoadMigrations accepted a dialect with no embedded migrations")
@@ -67,6 +71,7 @@ func TestLoadMigrationsRejectsAnUnknownDialect(t *testing.T) {
 }
 
 func TestMigrateAppliesEverythingOnAFreshDatabase(t *testing.T) {
+	storagetest.SkipUnlessSQLite(t)
 	db := openBare(t)
 
 	applied, err := storage.Migrate(t.Context(), db, nil)
@@ -91,6 +96,7 @@ func TestMigrateAppliesEverythingOnAFreshDatabase(t *testing.T) {
 }
 
 func TestMigrateIsIdempotent(t *testing.T) {
+	storagetest.SkipUnlessSQLite(t)
 	// Every server start calls Migrate, so a second run must be a no-op
 	// rather than an error or a duplicate application.
 	db := openBare(t)
@@ -108,6 +114,7 @@ func TestMigrateIsIdempotent(t *testing.T) {
 }
 
 func TestSchemaVersionIsZeroBeforeMigrating(t *testing.T) {
+	storagetest.SkipUnlessSQLite(t)
 	db := openBare(t)
 	// The ledger does not exist yet, so this must fail rather than silently
 	// report a migrated database.
@@ -117,6 +124,7 @@ func TestSchemaVersionIsZeroBeforeMigrating(t *testing.T) {
 }
 
 func TestMigrateRecordsTheLedgerFaithfully(t *testing.T) {
+	storagetest.SkipUnlessSQLite(t)
 	db := openMemory(t)
 
 	applied, err := storage.AppliedMigrations(t.Context(), db)
@@ -177,7 +185,7 @@ func TestADatabaseFromANewerBuildIsRefused(t *testing.T) {
 	db := openMemory(t)
 
 	_, err := db.ExecContext(t.Context(),
-		`INSERT INTO schema_migrations (version, name, checksum, applied_at) VALUES (9999, 'from_the_future', 'abc', ?)`,
+		db.Rebind(`INSERT INTO schema_migrations (version, name, checksum, applied_at) VALUES (9999, 'from_the_future', 'abc', ?)`),
 		time.Now().UTC())
 	if err != nil {
 		t.Fatalf("preparing the test failed: %v", err)
@@ -193,6 +201,7 @@ func TestADatabaseFromANewerBuildIsRefused(t *testing.T) {
 }
 
 func TestMigrateAcceptsANilLogger(t *testing.T) {
+	storagetest.SkipUnlessSQLite(t)
 	// Migrate runs before the logger is necessarily wired up, so a nil logger
 	// must not panic.
 	db := openBare(t)
@@ -210,6 +219,7 @@ func TestMigrationFilenameRoundTrips(t *testing.T) {
 }
 
 func TestInitialMigrationCreatesServerMetadata(t *testing.T) {
+	storagetest.SkipUnlessSQLite(t)
 	db := openMemory(t)
 	var name string
 	err := db.QueryRowContext(t.Context(),

@@ -88,6 +88,41 @@ jobs:
       - name: Test
         run: go test -count=1 -shuffle=on ./...
 
+  go-test-postgres:
+    name: Go test (PostgreSQL)
+    runs-on: ubuntu-latest
+    # Headnet claims to support two backends, and until this job existed only
+    # one of them was ever executed: the PostgreSQL migrations were shipped
+    # entirely unverified. This job also gives the concurrency tests a real
+    # connection pool, which SQLite cannot — it is held to one connection, so
+    # transactions there serialise and never actually contend.
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: headnet
+          POSTGRES_PASSWORD: headnet
+          POSTGRES_DB: headnet
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Test against PostgreSQL
+        env:
+          HEADNET_TEST_POSTGRES_DSN: postgres://headnet:headnet@localhost:5432/headnet?sslmode=disable
+        run: go test -count=1 -shuffle=on ./internal/...
+
   go-test-race:
     name: Go test (race detector)
     runs-on: ubuntu-latest

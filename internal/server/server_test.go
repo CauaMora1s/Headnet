@@ -15,6 +15,7 @@ import (
 	"github.com/CauaMora1s/Headnet/internal/logging"
 	"github.com/CauaMora1s/Headnet/internal/server"
 	"github.com/CauaMora1s/Headnet/internal/storage"
+	"github.com/CauaMora1s/Headnet/internal/storage/storagetest"
 	"github.com/CauaMora1s/Headnet/packages/api"
 	"github.com/CauaMora1s/Headnet/packages/protocol"
 )
@@ -46,18 +47,7 @@ func newServer(t *testing.T, tweak func(*config.Config)) *server.Server {
 
 func newDB(t *testing.T) *storage.DB {
 	t.Helper()
-	db, err := storage.Open(t.Context(), storage.Options{
-		Driver: storage.DriverSQLite,
-		Path:   storage.MemoryPath,
-	})
-	if err != nil {
-		t.Fatalf("opening the database failed: %v", err)
-	}
-	t.Cleanup(func() { db.Close() })
-	if _, err := storage.Migrate(t.Context(), db, nil); err != nil {
-		t.Fatalf("migrating failed: %v", err)
-	}
-	return db
+	return storagetest.Open(t)
 }
 
 // do sends a request to the server and returns the recorder.

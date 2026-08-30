@@ -38,9 +38,34 @@ rather than reaching into internals.
 
 ### Integration
 
-The server tests build a real `Server` over a real (in-memory) SQLite
-database, migrate it, and drive it through `httptest`. No mocks for the
-database — a mocked database tests the mock.
+The server tests build a real `Server` over a real database, migrate it, and
+drive it through `httptest`. No mocks for the database — a mocked database
+tests the mock.
+
+**Both backends are exercised.** `storagetest.Open(t)` returns an isolated
+in-memory SQLite database by default, and a uniquely-schema'd PostgreSQL
+database when `HEADNET_TEST_POSTGRES_DSN` is set. CI runs one job each way.
+
+To run against PostgreSQL locally:
+
+```bash
+docker run -d --name headnet-pgtest \
+  -e POSTGRES_USER=headnet -e POSTGRES_PASSWORD=headnet -e POSTGRES_DB=headnet \
+  -p 55432:5432 postgres:17-alpine
+```
+
+```bash
+HEADNET_TEST_POSTGRES_DSN="postgres://headnet:headnet@127.0.0.1:55432/headnet?sslmode=disable" go test -count=1 ./internal/...
+```
+
+This is worth doing before pushing anything that touches SQL. It has already
+paid for itself twice: it caught test fixtures using `?` placeholders that
+only SQLite accepts, and a genuine concurrency bug in the address allocator
+that SQLite structurally cannot reach — under SQLite the pool is held to a
+single connection, so allocations serialise and never contend.
+
+Tests that assert SQLite-specific behaviour — a pragma, a `sqlite_master`
+query — call `storagetest.SkipUnlessSQLite(t)`.
 
 In-memory databases are given random names from the CSPRNG so parallel tests
 cannot see each other's schema. This was a real bug: an earlier version used a
@@ -208,6 +233,7 @@ Every push and pull request runs:
 | --- | --- |
 | Go lint | `gofmt`, `go vet`, `go mod tidy` check, `golangci-lint` |
 | Go test | Linux, macOS and Windows, shuffled |
+| Go test (PostgreSQL) | Linux, against a real PostgreSQL 17 service |
 | Go test (race) | Linux, `CGO_ENABLED=1` |
 | Go build | Seven platform targets |
 | Web | Lint, type check, test, build |

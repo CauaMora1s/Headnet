@@ -23,6 +23,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"net/netip"
 	"time"
 
@@ -43,11 +44,22 @@ var (
 	ErrAlreadyAllocated = errors.New("the owner already holds an address")
 )
 
-// maxAllocationAttempts bounds the retry loop that runs when another
-// transaction takes the candidate address first. Each attempt eliminates one
-// address, so a handful is ample; the bound exists to turn a pathological
-// case into an error rather than a hang.
-const maxAllocationAttempts = 16
+const (
+	// maxAllocationAttempts bounds the retry loop that runs when another
+	// transaction takes the candidate address first. The bound exists to turn
+	// a pathological case into a clear error rather than a hang.
+	maxAllocationAttempts = 32
+
+	// scatterWindow is how many free addresses a retry chooses between.
+	//
+	// Retrying in strict lowest-first order does not work under real
+	// concurrency: every contending allocator reads the same table, picks the
+	// same address, and then walks upwards in lockstep, so the last of N
+	// simultaneous enrolments needs N attempts. Choosing at random from a
+	// window of free addresses breaks that lockstep, and convergence stops
+	// depending on how many enrolments happen to overlap.
+	scatterWindow = 256
+)
 
 // Assignment is the set of addresses held by one owner.
 type Assignment struct {
@@ -161,8 +173,11 @@ func (a *Allocator) allocateFrom(
 		VALUES (?, ?, ?, ?)
 		ON CONFLICT (address) DO NOTHING`)
 
-	for range maxAllocationAttempts {
-		candidate, err := a.nextFree(pool, taken)
+	for attempt := range maxAllocationAttempts {
+		// The first attempt takes the lowest free address, so a quiet system
+		// numbers its devices tidily and predictably. Only a collision falls
+		// back to scattering.
+		candidate, err := a.pickCandidate(pool, taken, attempt > 0)
 		if err != nil {
 			return netip.Addr{}, err
 		}
@@ -179,9 +194,16 @@ func (a *Allocator) allocateFrom(
 			return candidate, nil
 		}
 
-		// Another transaction took it between the read and the insert. Note it
-		// locally and try the next one rather than re-reading the whole set.
-		taken[candidate] = struct{}{}
+		// Another transaction claimed it first. The insert blocked until that
+		// transaction committed, so re-reading now sees its address and
+		// everything else committed in the meantime — which is what stops the
+		// retry walking upwards one collision at a time.
+		refreshed, err := a.takenIn(ctx, tx, pool)
+		if err != nil {
+			return netip.Addr{}, err
+		}
+		refreshed[candidate] = struct{}{}
+		taken = refreshed
 	}
 
 	return netip.Addr{}, fmt.Errorf(
@@ -189,19 +211,50 @@ func (a *Allocator) allocateFrom(
 		pool, maxAllocationAttempts)
 }
 
-// nextFree returns the lowest usable address in the pool that is not taken.
-func (a *Allocator) nextFree(pool netip.Prefix, taken map[netip.Addr]struct{}) (netip.Addr, error) {
+// pickCandidate chooses an address to attempt.
+func (a *Allocator) pickCandidate(
+	pool netip.Prefix, taken map[netip.Addr]struct{}, scatter bool,
+) (netip.Addr, error) {
+	limit := 1
+	if scatter {
+		limit = scatterWindow
+	}
+
+	free := a.freeAddresses(pool, taken, limit)
+	if len(free) == 0 {
+		return netip.Addr{}, fmt.Errorf("%w: %s", ErrPoolExhausted, pool)
+	}
+	if !scatter {
+		return free[0], nil
+	}
+
+	// Contention avoidance only. This is not a security decision: an overlay
+	// address is distributed to every authorised peer, so there is nothing
+	// secret about which one a device receives.
+	return free[rand.IntN(len(free))], nil //nolint:gosec // G404: not security-sensitive
+}
+
+// freeAddresses returns up to limit usable addresses in the pool, lowest
+// first, skipping those already taken.
+func (a *Allocator) freeAddresses(
+	pool netip.Prefix, taken map[netip.Addr]struct{}, limit int,
+) []netip.Addr {
+	free := make([]netip.Addr, 0, limit)
+
 	// Start past the network address, which is never handed out.
 	for addr := pool.Masked().Addr().Next(); addr.IsValid() && pool.Contains(addr); addr = addr.Next() {
 		// The IPv4 broadcast address is not usable as a host address.
 		if addr.Is4() && addr == a.v4Broadcast {
 			continue
 		}
-		if _, used := taken[addr]; !used {
-			return addr, nil
+		if _, used := taken[addr]; used {
+			continue
+		}
+		if free = append(free, addr); len(free) == limit {
+			break
 		}
 	}
-	return netip.Addr{}, fmt.Errorf("%w: %s", ErrPoolExhausted, pool)
+	return free
 }
 
 // takenIn reads the addresses already allocated within a pool.

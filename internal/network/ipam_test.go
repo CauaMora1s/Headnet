@@ -13,6 +13,7 @@ import (
 	"github.com/CauaMora1s/Headnet/internal/config"
 	"github.com/CauaMora1s/Headnet/internal/network"
 	"github.com/CauaMora1s/Headnet/internal/storage"
+	"github.com/CauaMora1s/Headnet/internal/storage/storagetest"
 )
 
 // newAllocator returns an allocator over a migrated in-memory database, with
@@ -20,17 +21,7 @@ import (
 func newAllocator(t *testing.T, v4CIDR, v6CIDR string) (*network.Allocator, *storage.DB) {
 	t.Helper()
 
-	db, err := storage.Open(t.Context(), storage.Options{
-		Driver: storage.DriverSQLite,
-		Path:   storage.MemoryPath,
-	})
-	if err != nil {
-		t.Fatalf("opening the database failed: %v", err)
-	}
-	t.Cleanup(func() { db.Close() })
-	if _, err := storage.Migrate(t.Context(), db, nil); err != nil {
-		t.Fatalf("migrating failed: %v", err)
-	}
+	db := storagetest.Open(t)
 
 	cfg := config.Default().Network
 	cfg.IPv4CIDR = v4CIDR
@@ -360,13 +351,7 @@ func TestAllocateRequiresATransactionAndAnOwner(t *testing.T) {
 }
 
 func TestNewAllocatorRejectsAnInvalidPool(t *testing.T) {
-	db, err := storage.Open(t.Context(), storage.Options{
-		Driver: storage.DriverSQLite, Path: storage.MemoryPath,
-	})
-	if err != nil {
-		t.Fatalf("opening the database failed: %v", err)
-	}
-	t.Cleanup(func() { db.Close() })
+	db := storagetest.Open(t)
 
 	// An allocator over a loopback pool would hand out addresses that shadow a
 	// device's own loopback traffic, so it must be refused even though the
@@ -388,7 +373,7 @@ func TestStaleAllocationsOutsideThePoolDoNotBlockAllocation(t *testing.T) {
 	a, db := newAllocator(t, "100.100.0.0/16", "")
 
 	_, err := db.ExecContext(t.Context(),
-		`INSERT INTO ip_allocations (address, family, owner_id, allocated_at) VALUES ('10.9.9.9', 4, 'dev_old', ?)`,
+		db.Rebind(`INSERT INTO ip_allocations (address, family, owner_id, allocated_at) VALUES ('10.9.9.9', 4, 'dev_old', ?)`),
 		time.Now().UTC())
 	if err != nil {
 		t.Fatalf("seeding a stale allocation failed: %v", err)

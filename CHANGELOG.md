@@ -82,8 +82,9 @@ No release has been tagged yet. Everything below is on `main`.
 
 **Infrastructure**
 
-- CI: lint, tests on Linux, macOS and Windows, race detector, seven-platform
-  build matrix, end-to-end smoke test, container build
+- CI: lint, tests on Linux, macOS and Windows, a PostgreSQL job against a real
+  PostgreSQL 17 service, race detector, seven-platform build matrix,
+  end-to-end smoke test, container build
 - Security workflow: `govulncheck`, CodeQL, dependency review, secret scanning
   over full history, frontend audit
 - Distroless container image, non-root, read-only root filesystem
