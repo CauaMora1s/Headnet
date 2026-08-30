@@ -16,7 +16,7 @@ VERSION    ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo 0
 COMMIT     ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 BUILD_DATE ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 
-VERSION_PKG := github.com/headnet/headnet/internal/version
+VERSION_PKG := github.com/CauaMora1s/Headnet/internal/version
 LDFLAGS := -s -w \
 	-X $(VERSION_PKG).version=$(VERSION) \
 	-X $(VERSION_PKG).commit=$(COMMIT) \

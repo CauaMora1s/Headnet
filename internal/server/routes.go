@@ -6,11 +6,11 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/headnet/headnet/internal/httpapi"
-	"github.com/headnet/headnet/internal/storage"
-	"github.com/headnet/headnet/internal/version"
-	"github.com/headnet/headnet/packages/api"
-	"github.com/headnet/headnet/packages/protocol"
+	"github.com/CauaMora1s/Headnet/internal/httpapi"
+	"github.com/CauaMora1s/Headnet/internal/storage"
+	"github.com/CauaMora1s/Headnet/internal/version"
+	"github.com/CauaMora1s/Headnet/packages/api"
+	"github.com/CauaMora1s/Headnet/packages/protocol"
 )
 
 // routes builds the route table.

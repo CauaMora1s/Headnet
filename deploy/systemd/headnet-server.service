@@ -12,7 +12,7 @@
 
 [Unit]
 Description=Headnet control plane
-Documentation=https://github.com/headnet/headnet/tree/main/docs
+Documentation=https://github.com/CauaMora1s/Headnet/tree/main/docs
 After=network-online.target
 Wants=network-online.target
 

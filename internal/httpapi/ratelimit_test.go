@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/headnet/headnet/internal/httpapi"
-	"github.com/headnet/headnet/packages/api"
+	"github.com/CauaMora1s/Headnet/internal/httpapi"
+	"github.com/CauaMora1s/Headnet/packages/api"
 )
 
 func TestLimiterAllowsUpToTheBurst(t *testing.T) {

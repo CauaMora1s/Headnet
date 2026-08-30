@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/headnet/headnet/packages/config"
+	"github.com/CauaMora1s/Headnet/packages/config"
 )
 
 type oidcSection struct {

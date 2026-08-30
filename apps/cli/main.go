@@ -17,8 +17,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/headnet/headnet/internal/cliutil"
-	"github.com/headnet/headnet/internal/version"
+	"github.com/CauaMora1s/Headnet/internal/cliutil"
+	"github.com/CauaMora1s/Headnet/internal/version"
 )
 
 func main() {

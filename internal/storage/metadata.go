@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/headnet/headnet/packages/shared"
+	"github.com/CauaMora1s/Headnet/packages/shared"
 )
 
 // Metadata keys. Each one is a deliberate, documented part of the deployment's

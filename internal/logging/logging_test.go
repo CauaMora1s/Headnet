@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/headnet/headnet/internal/logging"
+	"github.com/CauaMora1s/Headnet/internal/logging"
 )
 
 // newBuffered returns a JSON logger writing into a buffer the test can inspect.

@@ -13,7 +13,7 @@ info:
     fabricated data is worse than one that is honestly short.
 
     Planned endpoints are listed in
-    [docs/ROADMAP.md](https://github.com/headnet/headnet/blob/main/docs/ROADMAP.md)
+    [docs/ROADMAP.md](https://github.com/CauaMora1s/Headnet/blob/main/docs/ROADMAP.md)
     and will be added here as they land.
 
     ## Versioning
@@ -56,7 +56,7 @@ info:
     Behind a reverse proxy every request appears to come from the proxy, so
     the limiter treats it as one client. Forwarding headers are deliberately
     not trusted. See
-    [docs/deployment.md](https://github.com/headnet/headnet/blob/main/docs/deployment.md).
+    [docs/deployment.md](https://github.com/CauaMora1s/Headnet/blob/main/docs/deployment.md).
 
   license:
     name: AGPL-3.0-or-later
@@ -64,7 +64,7 @@ info:
 
   contact:
     name: Headnet
-    url: https://github.com/headnet/headnet
+    url: https://github.com/CauaMora1s/Headnet
 
 servers:
   - url: http://localhost:8080

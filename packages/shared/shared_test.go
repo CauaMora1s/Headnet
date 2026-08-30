@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/headnet/headnet/packages/shared"
+	"github.com/CauaMora1s/Headnet/packages/shared"
 )
 
 func TestNewIDIsPrefixedAndUnique(t *testing.T) {

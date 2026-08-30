@@ -86,4 +86,4 @@ formatters:
   settings:
     goimports:
       local-prefixes:
-        - github.com/headnet/headnet
+        - github.com/CauaMora1s/Headnet

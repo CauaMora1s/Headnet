@@ -11,12 +11,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/headnet/headnet/internal/config"
-	"github.com/headnet/headnet/internal/logging"
-	"github.com/headnet/headnet/internal/server"
-	"github.com/headnet/headnet/internal/storage"
-	"github.com/headnet/headnet/packages/api"
-	"github.com/headnet/headnet/packages/protocol"
+	"github.com/CauaMora1s/Headnet/internal/config"
+	"github.com/CauaMora1s/Headnet/internal/logging"
+	"github.com/CauaMora1s/Headnet/internal/server"
+	"github.com/CauaMora1s/Headnet/internal/storage"
+	"github.com/CauaMora1s/Headnet/packages/api"
+	"github.com/CauaMora1s/Headnet/packages/protocol"
 )
 
 // newServer builds a server backed by an isolated in-memory database.

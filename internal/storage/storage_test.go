@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/headnet/headnet/internal/storage"
+	"github.com/CauaMora1s/Headnet/internal/storage"
 )
 
 // openMemory returns a migrated, isolated in-memory database.

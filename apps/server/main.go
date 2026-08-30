@@ -16,13 +16,13 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/headnet/headnet/internal/config"
-	"github.com/headnet/headnet/internal/logging"
-	"github.com/headnet/headnet/internal/server"
-	"github.com/headnet/headnet/internal/storage"
-	"github.com/headnet/headnet/internal/version"
-	pkgconfig "github.com/headnet/headnet/packages/config"
-	"github.com/headnet/headnet/packages/shared"
+	"github.com/CauaMora1s/Headnet/internal/config"
+	"github.com/CauaMora1s/Headnet/internal/logging"
+	"github.com/CauaMora1s/Headnet/internal/server"
+	"github.com/CauaMora1s/Headnet/internal/storage"
+	"github.com/CauaMora1s/Headnet/internal/version"
+	pkgconfig "github.com/CauaMora1s/Headnet/packages/config"
+	"github.com/CauaMora1s/Headnet/packages/shared"
 )
 
 func main() {

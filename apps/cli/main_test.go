@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/headnet/headnet/internal/cliutil"
-	"github.com/headnet/headnet/packages/api"
-	"github.com/headnet/headnet/packages/protocol"
+	"github.com/CauaMora1s/Headnet/internal/cliutil"
+	"github.com/CauaMora1s/Headnet/packages/api"
+	"github.com/CauaMora1s/Headnet/packages/protocol"
 )
 
 func runCLI(t *testing.T, argv ...string) (code int, stdout, stderr string) {

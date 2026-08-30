@@ -20,8 +20,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/headnet/headnet/internal/logging"
-	"github.com/headnet/headnet/packages/api"
+	"github.com/CauaMora1s/Headnet/internal/logging"
+	"github.com/CauaMora1s/Headnet/packages/api"
 )
 
 // WriteJSON sends a JSON response with the given status code.
@@ -90,7 +90,7 @@ func NotImplemented(w http.ResponseWriter, r *http.Request, feature, phase strin
 		api.NewErrorResponse(api.CodeNotImplemented,
 			fmt.Sprintf("%s is not implemented yet", feature)).
 			WithDetail("roadmap_phase", phase).
-			WithDetail("roadmap", "https://github.com/headnet/headnet/blob/main/docs/ROADMAP.md"))
+			WithDetail("roadmap", "https://github.com/CauaMora1s/Headnet/blob/main/docs/ROADMAP.md"))
 }
 
 // DecodeJSON reads and validates a JSON request body.

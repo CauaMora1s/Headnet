@@ -19,10 +19,10 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/headnet/headnet/internal/config"
-	"github.com/headnet/headnet/internal/httpapi"
-	"github.com/headnet/headnet/internal/storage"
-	"github.com/headnet/headnet/packages/shared"
+	"github.com/CauaMora1s/Headnet/internal/config"
+	"github.com/CauaMora1s/Headnet/internal/httpapi"
+	"github.com/CauaMora1s/Headnet/internal/storage"
+	"github.com/CauaMora1s/Headnet/packages/shared"
 )
 
 // Options are the dependencies a Server needs. Everything is injected so the

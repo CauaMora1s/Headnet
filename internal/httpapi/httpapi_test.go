@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/headnet/headnet/internal/httpapi"
-	"github.com/headnet/headnet/internal/logging"
-	"github.com/headnet/headnet/packages/api"
+	"github.com/CauaMora1s/Headnet/internal/httpapi"
+	"github.com/CauaMora1s/Headnet/internal/logging"
+	"github.com/CauaMora1s/Headnet/packages/api"
 )
 
 // request runs a handler against a synthetic request and returns the recorder.

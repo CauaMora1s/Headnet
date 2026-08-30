@@ -1,4 +1,4 @@
-module github.com/headnet/headnet
+module github.com/CauaMora1s/Headnet
 
 go 1.25.0
 

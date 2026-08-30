@@ -1,10 +1,10 @@
 blank_issues_enabled: false
 contact_links:
   - name: Security vulnerability
-    url: https://github.com/headnet/headnet/security/advisories/new
+    url: https://github.com/CauaMora1s/Headnet/security/advisories/new
     about: >-
       Please report vulnerabilities privately, never as a public issue.
       See SECURITY.md.
   - name: Question or idea
-    url: https://github.com/headnet/headnet/discussions
+    url: https://github.com/CauaMora1s/Headnet/discussions
     about: For questions, ideas and anything not yet a concrete bug.

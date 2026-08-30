@@ -131,4 +131,4 @@ AGPL-3.0-or-later, with `packages/` under Apache-2.0 so third parties can
 interoperate. See [licensing](docs/licensing.md) and
 [ADR-0009](docs/architecture/decisions/ADR-0009-licensing.md).
 
-[Unreleased]: https://github.com/headnet/headnet/commits/main
+[Unreleased]: https://github.com/CauaMora1s/Headnet/commits/main

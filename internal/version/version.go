@@ -2,7 +2,7 @@
 //
 // Values are injected at link time by the build system:
 //
-//	go build -ldflags "-X github.com/headnet/headnet/internal/version.version=0.1.0 ..."
+//	go build -ldflags "-X github.com/CauaMora1s/Headnet/internal/version.version=0.1.0 ..."
 //
 // When they are absent — a plain `go build`, `go run`, or `go test` — the
 // package falls back to the module information the Go toolchain embeds, so a

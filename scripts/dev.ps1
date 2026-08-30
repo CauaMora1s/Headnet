@@ -24,7 +24,7 @@ $ErrorActionPreference = 'Stop'
 
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 $BinDir = Join-Path $RepoRoot 'bin'
-$VersionPkg = 'github.com/headnet/headnet/internal/version'
+$VersionPkg = 'github.com/CauaMora1s/Headnet/internal/version'
 
 # cgo is off so the binaries are static and cross-compile cleanly. The SQLite
 # driver is pure Go precisely so this works.

@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/headnet/headnet/internal/config"
+	"github.com/CauaMora1s/Headnet/internal/config"
 )
 
 // mutate returns a valid default configuration with one change applied, which

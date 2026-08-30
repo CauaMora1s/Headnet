@@ -87,7 +87,7 @@ $ headnet connect
 headnet connect: connecting to a network is not implemented yet.
 
 It is planned for Phase 2 of the roadmap:
-  https://github.com/headnet/headnet/blob/main/docs/ROADMAP.md
+  https://github.com/CauaMora1s/Headnet/blob/main/docs/ROADMAP.md
 ```
 
 | Command | | Phase |

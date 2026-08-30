@@ -8,9 +8,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/headnet/headnet/internal/logging"
-	"github.com/headnet/headnet/packages/api"
-	"github.com/headnet/headnet/packages/shared"
+	"github.com/CauaMora1s/Headnet/internal/logging"
+	"github.com/CauaMora1s/Headnet/packages/api"
+	"github.com/CauaMora1s/Headnet/packages/shared"
 )
 
 // Middleware wraps a handler.

@@ -21,8 +21,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/headnet/headnet/internal/logging"
-	pkgconfig "github.com/headnet/headnet/packages/config"
+	"github.com/CauaMora1s/Headnet/internal/logging"
+	pkgconfig "github.com/CauaMora1s/Headnet/packages/config"
 )
 
 // EnvPrefix is prepended to every environment variable, so the server's

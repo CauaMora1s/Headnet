@@ -725,7 +725,7 @@ in earlier phases are resolved here or explicitly re-accepted.
 
 ## How to propose a change to this roadmap
 
-Open a [discussion](https://github.com/headnet/headnet/discussions). Arguments
+Open a [discussion](https://github.com/CauaMora1s/Headnet/discussions). Arguments
 that a phase is in the wrong order, or that something is missing from a
 phase's security considerations, are especially welcome — those are the
 mistakes that are expensive to discover later.

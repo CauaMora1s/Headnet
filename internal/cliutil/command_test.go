@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/headnet/headnet/internal/cliutil"
+	"github.com/CauaMora1s/Headnet/internal/cliutil"
 )
 
 // run dispatches argv and returns the exit code plus both streams.

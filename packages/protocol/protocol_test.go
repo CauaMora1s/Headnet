@@ -8,7 +8,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/headnet/headnet/packages/protocol"
+	"github.com/CauaMora1s/Headnet/packages/protocol"
 )
 
 func TestLocalRangeIsValid(t *testing.T) {

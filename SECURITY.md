@@ -12,7 +12,7 @@ problem.** A public report tells attackers before it tells us, and everyone
 running Headnet is exposed in the interval.
 
 Report privately through **[GitHub Security
-Advisories](https://github.com/headnet/headnet/security/advisories/new)**. That
+Advisories](https://github.com/CauaMora1s/Headnet/security/advisories/new)**. That
 gives us a private channel with you, and gives you credit in the advisory when
 it is published.
 
@@ -129,7 +129,7 @@ Headnet is pre-release and unaudited. If you are running it anyway:
 - Leave rate limiting on, and add per-client limits at your reverse proxy —
   behind a proxy, Headnet sees only the proxy's address. See
   [docs/deployment.md](docs/deployment.md).
-- Watch [releases](https://github.com/headnet/headnet/releases) for advisories.
+- Watch [releases](https://github.com/CauaMora1s/Headnet/releases) for advisories.
 
 ## Our commitments
 

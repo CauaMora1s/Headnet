@@ -33,7 +33,7 @@ ARG COMMIT=unknown
 ARG BUILD_DATE=unknown
 ARG TARGETARCH
 
-RUN VERSION_PKG=github.com/headnet/headnet/internal/version && \
+RUN VERSION_PKG=github.com/CauaMora1s/Headnet/internal/version && \
     LDFLAGS="-s -w -X ${VERSION_PKG}.version=${VERSION} -X ${VERSION_PKG}.commit=${COMMIT} -X ${VERSION_PKG}.buildDate=${BUILD_DATE}" && \
     GOARCH=${TARGETARCH:-amd64} go build -trimpath -ldflags "${LDFLAGS}" -o /out/headnet-server ./apps/server && \
     GOARCH=${TARGETARCH:-amd64} go build -trimpath -ldflags "${LDFLAGS}" -o /out/headnet ./apps/cli

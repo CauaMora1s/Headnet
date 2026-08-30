@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/headnet/headnet/packages/api"
+	"github.com/CauaMora1s/Headnet/packages/api"
 )
 
 func TestEveryKnownCodeHasADeliberateStatus(t *testing.T) {

@@ -103,7 +103,7 @@ func NotImplemented(feature, phase string) error {
 		Code: ExitNotImplemented,
 		Err: fmt.Errorf("%s is not implemented yet.\n\n"+
 			"It is planned for %s of the roadmap:\n"+
-			"  https://github.com/headnet/headnet/blob/main/docs/ROADMAP.md", feature, phase),
+			"  https://github.com/CauaMora1s/Headnet/blob/main/docs/ROADMAP.md", feature, phase),
 	}
 }
 

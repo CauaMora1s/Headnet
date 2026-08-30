@@ -28,7 +28,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/headnet/headnet/packages/shared"
+	"github.com/CauaMora1s/Headnet/packages/shared"
 
 	// Registered as "sqlite". Pure Go, so no cgo toolchain is required.
 	_ "modernc.org/sqlite"

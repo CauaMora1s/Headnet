@@ -31,7 +31,7 @@ It should be a name you control and will keep.
 The whole installation:
 
 ```bash
-git https://github.com/CauaMora1s/Headnet.git
+git clone https://github.com/CauaMora1s/Headnet.git
 cd headnet
 docker compose -f deploy/compose/docker-compose.yml up -d
 curl http://localhost:8080/health
@@ -74,7 +74,15 @@ fails to start.
 
 ## Docker
 
+> **No image is published yet.** Headnet has made no release, and CI builds
+> the image without pushing it. Build it yourself — do not pull a similarly
+> named image from a public registry, because this project does not control
+> any such namespace.
+
 ```bash
+# Build it locally first.
+make docker-build
+
 docker run -d \
   --name headnet \
   --restart unless-stopped \
@@ -308,7 +316,7 @@ binary stop rather than corrupt data. See [upgrading](upgrade.md).
 - [ ] `/metrics` left off, or bound to a private interface
 - [ ] Container running non-root, read-only, with capabilities dropped
 - [ ] Host firewall permitting only what is needed
-- [ ] Watching [releases](https://github.com/headnet/headnet/releases) for
+- [ ] Watching [releases](https://github.com/CauaMora1s/Headnet/releases) for
       advisories
 
 ---
