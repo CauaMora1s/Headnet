@@ -1,27 +1,30 @@
-// Package auth is not implemented yet.
+// Package auth is the identity domain: accounts, passwords, and the
+// authentication providers behind them.
 //
-// It is planned for Phase 1 of the roadmap; see
-// docs/ROADMAP.md#phase-1--server-mvp.
-//
-// This file exists so the intended shape of the control plane is visible in
-// the source tree, and so that nothing here can be mistaken for working code.
-// There is no implementation behind it.
-//
-// Authentication providers.
-//
-// The design is one abstraction with two implementations rather than one per
-// vendor: Google, GitHub Enterprise, Microsoft Entra, Okta, Keycloak and Dex
-// are all OIDC issuers, and writing a bespoke integration for each would
-// multiply the security-critical surface for no functional gain.
+// The design decision that shapes this package is that there are two provider
+// implementations, not one per vendor. Google, GitHub Enterprise, Microsoft
+// Entra, Okta, Keycloak and Dex are all OpenID Connect issuers, so they are
+// configuration rather than code:
 //
 //	AuthProvider
-//	├── Local   email + password, Argon2id
-//	└── OIDC    any compliant issuer
+//	├── Local   email + password, Argon2id      implemented
+//	└── OIDC    any compliant issuer            Phase 11
 //
-// Sessions will be server-side, not stateless tokens: when a device is
-// stolen, an administrator must be able to revoke access immediately, and a
-// self-contained token cannot be revoked before it expires.
-//
-// See docs/authentication.md and
+// Writing a bespoke integration for each would multiply the most
+// security-critical surface in the project for no functional gain. See
 // docs/architecture/decisions/ADR-0004-authentication-oidc.md.
+//
+// Three properties this package is responsible for:
+//
+//   - A password is never stored, logged or returned. Only an Argon2id hash in
+//     PHC string format, which carries its own cost parameters so they can be
+//     raised later without invalidating existing passwords.
+//   - A user's password hash is unexported, so it cannot reach a JSON encoder,
+//     a template or a struct-printing log call by accident.
+//   - Looking up a non-existent account must not be distinguishable from a
+//     wrong password. DummyHash exists so the login path can do equal work in
+//     both cases; without it the endpoint tells an attacker which addresses
+//     are registered.
+//
+// Sessions and the login flow live alongside this in session.go.
 package auth

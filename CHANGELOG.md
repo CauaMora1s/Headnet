@@ -23,6 +23,20 @@ No release has been tagged yet. Everything below is on `main`.
 
 ### Added
 
+**Identity**
+
+- User accounts, with Argon2id password hashing at current OWASP parameters.
+  The parameters are stored alongside each hash in PHC string format, so they
+  can be raised later without invalidating existing passwords; a login against
+  a weaker hash reports that it should be upgraded.
+- Email addresses are stored both as typed and lower-cased, with the unique
+  index on the normalised form, so one address cannot become two accounts by
+  differing in case. Plus-suffixes and dots are preserved, because folding them
+  is a provider-specific convention that would silently merge two people.
+- Password hashes cannot leave the `User` type: unexported to keep them from a
+  JSON encoder, with `String`/`GoString` to keep them out of `%+v` in a log
+  call or an error message.
+
 **Networking**
 
 - IP address management: addresses are allocated from the configured IPv4 and

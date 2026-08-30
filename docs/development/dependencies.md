@@ -1,6 +1,6 @@
 # Dependencies
 
-Headnet has **three** direct Go dependencies. That is deliberate: everything
+Headnet has **four** direct Go dependencies. That is deliberate: everything
 on the path of a request is code this project is responsible for.
 
 ---
@@ -52,6 +52,20 @@ adapter, so repository code stays backend-agnostic.
 
 **Why not `lib/pq`.** In maintenance mode; pgx is the actively developed
 successor.
+
+### `golang.org/x/crypto` — BSD-3-Clause
+
+Argon2id, for password hashing.
+
+**Why a dependency at all.** The standard library has no password-hashing
+function. `crypto/*` gives primitives, not a memory-hard KDF.
+
+**Why this one.** It is the Go team's own extended-crypto repository and the
+reference implementation of Argon2 for Go. The alternative to using it is
+implementing Argon2id, which the project's "never invent cryptography" rule
+rules out — and rightly, since a subtly wrong KDF fails silently.
+
+Only `argon2` is imported. The rest of the module is not linked in.
 
 ### `github.com/goccy/go-yaml` — MIT
 

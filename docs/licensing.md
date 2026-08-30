@@ -96,6 +96,7 @@ Every dependency is under a permissive licence compatible with both halves.
 | `modernc.org/sqlite` | BSD-3-Clause |
 | `github.com/jackc/pgx/v5` | MIT |
 | `github.com/goccy/go-yaml` | MIT |
+| `golang.org/x/crypto` | BSD-3-Clause |
 
 The Go standard library is BSD-3-Clause. Frontend dependencies are build-time
 only and do not ship in the server binary.

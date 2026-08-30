@@ -124,9 +124,10 @@ If one leaks: revoke it, then audit what enrolled with it.
 
 ---
 
-## Passwords (Phase 1)
+## Passwords
 
-Only relevant when the `local` authentication provider is enabled.
+**Implemented.** Only relevant when the `local` authentication provider is
+enabled.
 
 - **Argon2id**, with parameters from current OWASP guidance.
 - **Per-password salt** from `crypto/rand`.
@@ -195,6 +196,8 @@ Full procedure: [docs/deployment.md](../deployment.md).
 | | |
 | --- | --- |
 | Secret redaction in configuration rendering | **Implemented**, tested |
+| Argon2id password hashing, parameters stored with the hash | **Implemented**, tested |
+| Password hashes unreachable by JSON, templates or `fmt` | **Implemented**, tested |
 | Query strings excluded from request logs | **Implemented**, tested |
 | Error responses free of internal detail | **Implemented**, tested |
 | Health endpoints disclose no configuration | **Implemented**, tested |

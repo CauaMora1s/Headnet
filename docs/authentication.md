@@ -1,12 +1,8 @@
 # Authentication
 
-> **Not implemented yet.** This describes the design that
-> [Phase 1](ROADMAP.md#phase-1--server-mvp) will build. The
-> `auth.providers` setting is validated today, but nothing acts on it.
->
-> It is written now because the design decisions here are the expensive ones,
-> and because they constrain what gets built rather than rationalising it
-> afterwards.
+> **Partly implemented.** Accounts and password storage exist and are
+> described below as built. Sessions, login, first-run bootstrap and OIDC are
+> still being built; each section says which.
 
 ---
 
@@ -53,6 +49,8 @@ At least one provider is required.
 
 ## Local accounts
 
+**Implemented.**
+
 For deployments with no identity provider, or none they want to depend on. A
 Headnet installation must work with no internet connection and no third-party
 account.
@@ -66,10 +64,24 @@ account.
 - Constant-time comparison
 - Plaintext never stored, never logged, never returned by any API
 
-**Login behaviour:**
+A password is bounded at both ends. The minimum (12 characters) is a floor
+rather than a composition policy: length beats the digit-and-symbol rules that
+mostly produce `Password1!`. The maximum (1024) is a denial-of-service control,
+because hashing an unbounded input is an easy way to burn a server's memory
+bandwidth.
+
+The stored hash never leaves the `User` type. The field is unexported, so a
+JSON encoder or a template cannot reach it, and the type implements `String`
+and `GoString`, so a `%+v` in a log call or an error message cannot either —
+`fmt` reads unexported fields quite happily, and the unexported field alone
+would not have been enough.
+
+**Login behaviour** (being built):
 
 - Responses are identical for existing and non-existent accounts, in content
-  *and in timing*. Otherwise the endpoint is a user-enumeration oracle.
+  *and in timing*. Otherwise the endpoint is a user-enumeration oracle. The
+  hashing package provides `DummyHash` for exactly this: an attempt against an
+  address with no account still does a full Argon2 verification.
 - Rate limits tighter than the global limiter, plus account lockout with
   backoff.
 
