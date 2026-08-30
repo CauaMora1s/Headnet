@@ -98,7 +98,7 @@ You will need [Go 1.25+](https://go.dev/dl/) and, for the web UI,
 [Node 20+](https://nodejs.org/) with [pnpm](https://pnpm.io/).
 
 ```bash
-git clone https://github.com/headnet/headnet.git
+git clone https://github.com/CauaMora1s/Headnet.git
 cd headnet
 make dev
 ```

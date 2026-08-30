@@ -31,7 +31,7 @@ It should be a name you control and will keep.
 The whole installation:
 
 ```bash
-git clone https://github.com/headnet/headnet.git
+git https://github.com/CauaMora1s/Headnet.git
 cd headnet
 docker compose -f deploy/compose/docker-compose.yml up -d
 curl http://localhost:8080/health

@@ -26,7 +26,7 @@ that. CI reads the version from `go.mod` so the toolchain cannot drift.
 ## Getting started
 
 ```bash
-git clone https://github.com/headnet/headnet.git
+git clone https://github.com/CauaMora1s/Headnet.git
 cd headnet
 pnpm install
 make check

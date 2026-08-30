@@ -15,7 +15,7 @@ instructions, including optional tools, are in
 [docs/development/setup.md](docs/development/setup.md).
 
 ```bash
-git clone https://github.com/headnet/headnet.git
+git clone https://github.com/CauaMora1s/Headnet.git
 cd headnet
 pnpm install
 make check     # or .\scripts\dev.ps1 check on Windows
