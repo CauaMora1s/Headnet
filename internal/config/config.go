@@ -260,7 +260,7 @@ func (c *Config) Validate() error {
 	add(c.validateEnvironment())
 	add(c.Server.validate(c.Environment))
 	add(c.Database.validate())
-	add(c.Network.validate())
+	add(c.Network.Validate())
 	add(c.Auth.validate())
 	add(c.Log.validate())
 	add(c.RateLimit.validate())
@@ -397,7 +397,14 @@ const (
 	maxIPv6PrefixBits = 120
 )
 
-func (n NetworkConfig) validate() error {
+// Validate checks the address pools on their own.
+//
+// This one sub-validator is exported because it has a consumer outside the
+// package: internal/network re-checks the pools when building an allocator
+// rather than trusting that Config.Validate was called, since an allocator
+// built from an unvalidated pool would hand out addresses that shadow a
+// device's own loopback or link-local traffic.
+func (n NetworkConfig) Validate() error {
 	var problems []error
 
 	v4, err := parsePool("network.ipv4_cidr", n.IPv4CIDR, true, minIPv4PrefixBits, maxIPv4PrefixBits, reservedIPv4)

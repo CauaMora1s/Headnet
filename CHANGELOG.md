@@ -23,6 +23,15 @@ No release has been tagged yet. Everything below is on `main`.
 
 ### Added
 
+**Networking**
+
+- IP address management: addresses are allocated from the configured IPv4 and
+  IPv6 pools, one per enabled family, and released when their owner is removed.
+  Uniqueness is guaranteed by a database primary key rather than by application
+  logic, so concurrent enrolment cannot issue the same address twice. Network
+  and broadcast addresses are never handed out, and allocation runs inside the
+  caller's transaction so a failed enrolment leaks nothing.
+
 **Control plane**
 
 - HTTP server with graceful shutdown and bounded timeouts, including a

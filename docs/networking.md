@@ -18,7 +18,9 @@ network:
   ipv6_cidr: "fd7a:115c:a1e0::/48"
 ```
 
-**Implemented today: validation.** Allocation arrives in
+**Implemented today: validation and allocation.** Addresses are handed out
+from these pools, one per enabled family, and released when their owner goes
+away. What does not exist yet is anything to own one — devices arrive later in
 [Phase 1](ROADMAP.md#phase-1--server-mvp).
 
 ### Why `100.100.0.0/16`
