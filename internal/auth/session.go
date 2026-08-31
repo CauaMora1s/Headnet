@@ -100,7 +100,7 @@ func (s *Session) VerifyCSRF(token string) bool {
 	if token == "" || s.csrfHash == "" {
 		return false
 	}
-	return subtle.ConstantTimeCompare([]byte(hashToken(token)), []byte(s.csrfHash)) == 1
+	return subtle.ConstantTimeCompare([]byte(HashToken(token)), []byte(s.csrfHash)) == 1
 }
 
 // Issued is a newly created session together with the two secrets handed to
@@ -168,11 +168,11 @@ func (s *SessionStore) Issue(ctx context.Context, userID string, meta Meta, now 
 		return nil, errors.New("auth: a user ID is required to issue a session")
 	}
 
-	token, err := newSecret(sessionTokenBytes)
+	token, err := NewToken(sessionTokenBytes)
 	if err != nil {
 		return nil, err
 	}
-	csrfToken, err := newSecret(csrfTokenBytes)
+	csrfToken, err := NewToken(csrfTokenBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -190,13 +190,13 @@ func (s *SessionStore) Issue(ctx context.Context, userID string, meta Meta, now 
 		ExpiresAt:  now.Add(s.lifetime),
 		IP:         meta.IP,
 		UserAgent:  userAgent,
-		csrfHash:   hashToken(csrfToken),
+		csrfHash:   HashToken(csrfToken),
 	}
 
 	_, err = s.db.ExecContext(ctx, s.db.Rebind(`
 		INSERT INTO sessions (id, token_hash, csrf_hash, user_id, created_at, last_used_at, expires_at, ip, user_agent)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`),
-		session.ID, hashToken(token), session.csrfHash, session.UserID,
+		session.ID, HashToken(token), session.csrfHash, session.UserID,
 		session.CreatedAt, session.LastUsedAt, session.ExpiresAt, session.IP, session.UserAgent,
 	)
 	if err != nil {
@@ -221,7 +221,7 @@ func (s *SessionStore) Lookup(ctx context.Context, token string, now time.Time) 
 	)
 	err := s.db.QueryRowContext(ctx, s.db.Rebind(`
 		SELECT id, csrf_hash, user_id, created_at, last_used_at, expires_at, ip, user_agent
-		FROM sessions WHERE token_hash = ?`), hashToken(token)).Scan(
+		FROM sessions WHERE token_hash = ?`), HashToken(token)).Scan(
 		&session.ID, &session.csrfHash, &session.UserID, &session.CreatedAt,
 		&session.LastUsedAt, &expiresAt, &session.IP, &session.UserAgent,
 	)
@@ -266,7 +266,7 @@ func (s *SessionStore) Revoke(ctx context.Context, token string) error {
 		return nil
 	}
 	_, err := s.db.ExecContext(ctx,
-		s.db.Rebind(`DELETE FROM sessions WHERE token_hash = ?`), hashToken(token))
+		s.db.Rebind(`DELETE FROM sessions WHERE token_hash = ?`), HashToken(token))
 	if err != nil {
 		return fmt.Errorf("revoking the session: %w", err)
 	}
@@ -327,9 +327,12 @@ func (s *SessionStore) deleteByID(ctx context.Context, id string) error {
 	return nil
 }
 
-// newSecret returns n bytes of CSPRNG output, base64url-encoded without
-// padding so it is safe in a cookie, a header and a URL.
-func newSecret(n int) (string, error) {
+// NewToken returns n bytes of CSPRNG output, base64url-encoded without padding
+// so it is safe in a cookie, a header, a URL and a shell argument.
+//
+// Exported because setup keys need exactly the same thing. Two copies of a
+// token generator is two places to get the entropy or the encoding wrong.
+func NewToken(n int) (string, error) {
 	buf := make([]byte, n)
 	if _, err := rand.Read(buf); err != nil {
 		return "", fmt.Errorf("auth: generating a token: %w", err)
@@ -337,12 +340,15 @@ func newSecret(n int) (string, error) {
 	return base64.RawURLEncoding.EncodeToString(buf), nil
 }
 
-// hashToken hashes a bearer token for storage.
+// HashToken hashes a bearer token for storage.
 //
 // SHA-256, not a password KDF. The input is 32 bytes of CSPRNG output, so
 // there is no low-entropy guess for a slow hash to frustrate; all this needs
 // to do is ensure that reading the table yields nothing replayable.
-func hashToken(token string) string {
+//
+// Exported alongside NewToken so setup keys store their credential the same
+// way sessions store theirs.
+func HashToken(token string) string {
 	sum := sha256.Sum256([]byte(token))
 	return hex.EncodeToString(sum[:])
 }

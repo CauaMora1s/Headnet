@@ -103,17 +103,26 @@ headnet up --setup-key <KEY>
 
 That makes it a credential, and it is treated as one.
 
-**Requirements (Phase 1):**
+**Implemented:**
 
-- **Displayed once.** The server stores only a hash, so a database read yields
-  nothing usable.
-- **Revocable**, immediately.
-- **Expiring by default.** A key with no expiry has to be chosen
-  deliberately.
-- **Scoped.** A key may never grant more than its issuer holds. A key for
-  enrolling build agents should enrol build agents and nothing else.
-- **Optionally single-use.**
-- **Audited.** Creation, every use with its source address, and revocation.
+- **Displayed once.** The server stores only a SHA-256 hash, so a database read
+  yields nothing usable. A short display hint is kept so a key can be
+  recognised in a list without being spendable.
+- **Revocable**, immediately. Revoking twice keeps the first timestamp — when
+  the key actually stopped working.
+- **Expiring by default**, after seven days. A key with no expiry requires an
+  explicit `never_expires`.
+- **Optionally single-use.** The use count is checked in the `UPDATE`'s `WHERE`
+  clause rather than read and then compared, so two enrolments racing for the
+  last use of a key cannot both win.
+- **Audited.** Creation, every redemption with its source address, and
+  revocation.
+- **Issuing is administrative.** A setup key mints a credential that puts a
+  machine on the network.
+
+**Not yet enforced:** a key's **scope** (its tags) is stored and returned but
+nothing acts on it. Phase 6's policy engine will. Until then a key grants what
+its creator could grant, and this is stated rather than implied.
 
 **Operationally:** treat one like a password. Do not commit it, do not paste
 it into a chat, do not leave it in shell history. Prefer short-lived
@@ -197,6 +206,8 @@ Full procedure: [docs/deployment.md](../deployment.md).
 | --- | --- |
 | Secret redaction in configuration rendering | **Implemented**, tested |
 | Argon2id password hashing, parameters stored with the hash | **Implemented**, tested |
+| Setup keys stored hashed, shown once, revocable and expiring | **Implemented**, tested |
+| Device records hold a public key only, with no field for a private one | **Implemented**, tested |
 | Password hashes unreachable by JSON, templates or `fmt` | **Implemented**, tested |
 | Query strings excluded from request logs | **Implemented**, tested |
 | Error responses free of internal detail | **Implemented**, tested |

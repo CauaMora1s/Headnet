@@ -23,6 +23,33 @@ No release has been tagged yet. Everything below is on `main`.
 
 ### Added
 
+**Devices**
+
+- Device registration and revocation. A device record holds a WireGuard
+  **public** key and an address, and there is no field anywhere — in the
+  database or the API — for a private one. Public keys are validated as base64
+  decoding to 32 bytes, and an all-zero key is refused because that is what an
+  uninitialised buffer looks like.
+- Setup keys: revocable, expiring after seven days by default, optionally
+  single-use, and returned exactly once. Only a SHA-256 hash is stored, plus a
+  short display hint that identifies a key in a list without being able to
+  spend it. Their scope (tags) is stored but not yet enforced; Phase 6 will.
+- Headless enrolment: `POST /api/v1/devices/enroll` redeems a setup key and
+  registers the device it authorises, without a session — the key is the
+  credential. Every rejected key looks identical to the caller, so a rejection
+  cannot confirm that a key once existed.
+- Single-use means single-use under concurrency: the use count is checked in
+  the `UPDATE`'s `WHERE` clause rather than read and then compared, so two
+  simultaneous enrolments cannot both spend the last use. Verified against
+  PostgreSQL, where the race is real.
+- Revocation releases the device's addresses back to the pool in the same
+  transaction, and a revoked public key stays blocked permanently — one that
+  could be registered again would not really be revoked.
+- A member sees and manages only their own devices; an administrator sees all.
+  The scope is applied in the store query rather than in a handler, so a future
+  endpoint cannot forget it. Another user's device is reported as `404` rather
+  than `403`, because "you may not see this" confirms it exists.
+
 **Identity**
 
 - Sign-in, sign-out and server-side sessions, in a `Secure` `HttpOnly`

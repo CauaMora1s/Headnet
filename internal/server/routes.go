@@ -51,6 +51,29 @@ func (s *Server) routes() http.Handler {
 	mux.Handle("GET "+api.BasePath+"/auth/session",
 		s.authenticated(http.HandlerFunc(s.handleSession), false))
 
+	// Devices. Everything here needs a session except enrolment, where the
+	// setup key is itself the credential — so that one carries the tighter
+	// authentication rate limit instead.
+	mux.Handle("GET "+api.BasePath+"/devices",
+		s.authenticated(http.HandlerFunc(s.handleListDevices), false))
+	mux.Handle("POST "+api.BasePath+"/devices",
+		s.authenticated(http.HandlerFunc(s.handleRegisterDevice), false))
+	mux.Handle("GET "+api.BasePath+"/devices/{id}",
+		s.authenticated(http.HandlerFunc(s.handleGetDevice), false))
+	mux.Handle("DELETE "+api.BasePath+"/devices/{id}",
+		s.authenticated(http.HandlerFunc(s.handleRevokeDevice), false))
+	mux.Handle("POST "+api.BasePath+"/devices/enroll",
+		s.rateLimitAuth(http.HandlerFunc(s.handleEnrollDevice)))
+
+	// Setup keys are administrative: they mint credentials that enrol devices
+	// onto the network, so issuing one is an administrator's decision.
+	mux.Handle("POST "+api.BasePath+"/setup-keys",
+		s.authenticated(http.HandlerFunc(s.handleCreateSetupKey), true))
+	mux.Handle("GET "+api.BasePath+"/setup-keys",
+		s.authenticated(http.HandlerFunc(s.handleListSetupKeys), true))
+	mux.Handle("DELETE "+api.BasePath+"/setup-keys/{id}",
+		s.authenticated(http.HandlerFunc(s.handleRevokeSetupKey), true))
+
 	// Anything unmatched gets the standard envelope rather than Go's
 	// plain-text default, so a client only ever has to parse one error shape.
 	mux.Handle("/", httpapi.NotFoundHandler())

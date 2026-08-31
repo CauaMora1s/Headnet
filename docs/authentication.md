@@ -1,7 +1,7 @@
 # Authentication
 
-> **Partly implemented.** Accounts, password storage, sessions, login and
-> first-run bootstrap all work. OIDC, MFA and device enrolment do not; each
+> **Partly implemented.** Accounts, password storage, sessions, login,
+> first-run bootstrap and device enrolment all work. OIDC and MFA do not; each
 > section says which.
 
 ---
@@ -219,9 +219,14 @@ Install → headnet login → the device appears → connect
 The user signs in through their browser; the daemon generates a key pair
 locally and registers the public half.
 
+The server side of this exists: `POST /api/v1/devices` registers a device for
+the signed-in user and allocates its addresses. The daemon that generates the
+key and calls it is Phase 2.
+
 ### Headless, with a setup key
 
-For a server, a container, or a machine being provisioned by a script:
+**Implemented.** For a server, a container, or a machine being provisioned by a
+script:
 
 ```bash
 headnet up --setup-key hk_...

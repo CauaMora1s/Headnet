@@ -18,10 +18,10 @@ network:
   ipv6_cidr: "fd7a:115c:a1e0::/48"
 ```
 
-**Implemented today: validation and allocation.** Addresses are handed out
-from these pools, one per enabled family, and released when their owner goes
-away. What does not exist yet is anything to own one — devices arrive later in
-[Phase 1](ROADMAP.md#phase-1--server-mvp).
+**Implemented today: validation, allocation and ownership.** Devices are
+registered or enrolled, get one address per enabled family, and release them
+when revoked. What does not exist is anything that *carries traffic* between
+them — that is [Phase 3](ROADMAP.md#phase-3--device-to-device-networking).
 
 ### Why `100.100.0.0/16`
 

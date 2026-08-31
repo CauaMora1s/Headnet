@@ -97,6 +97,36 @@ tags:
       These endpoints carry a tighter rate limit than the rest of the API. They
       are unauthenticated by necessity, and repeated guessing is the whole
       attack against them.
+  - name: Devices
+    description: |
+      The machines on this network.
+
+      A device record holds a WireGuard **public** key and an address. There is
+      no field anywhere in this API for a private key: a device generates its
+      own key pair and sends only the public half. That is what makes a
+      compromised control plane survivable — nothing stored here can decrypt
+      any traffic.
+
+      A member sees and manages only their own devices; an administrator sees
+      all of them. A device belonging to someone else is reported as `404`
+      rather than `403`, because "you may not see this" would confirm it
+      exists.
+
+      **These are inventory records.** Nothing carries traffic yet; peer
+      connectivity arrives in Phase 3.
+  - name: Setup keys
+    description: |
+      Credentials that enrol a device without an interactive login — for a
+      headless server, a container, or a machine being provisioned by a script.
+
+      A setup key is returned **exactly once**, at creation. Only its SHA-256
+      is stored, so it cannot be recovered afterwards and reading the database
+      yields nothing that can enrol anything. Listings show a short display
+      hint, which identifies a key without being able to spend it.
+
+      Keys expire by default, are revocable immediately, and may be limited to
+      a single use. Issuing one is an administrative action, because it mints a
+      credential that puts a machine on the network.
 
 paths:
   /health:
@@ -496,6 +526,288 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
 
+  /api/v1/devices:
+    get:
+      tags: [Devices]
+      summary: List devices
+      description: |
+        Returns the caller's devices, or every device when the caller is an
+        administrator. Newest first.
+      operationId: listDevices
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: The devices in scope.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeviceList" }
+        "401":
+          description: Not signed in.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+    post:
+      tags: [Devices]
+      summary: Register a device
+      description: |
+        Adds a device owned by the signed-in user and allocates its addresses.
+
+        The device row and its address allocation are written in one
+        transaction, so a rejected registration leaks no address.
+      operationId: registerDevice
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RegisterDeviceRequest" }
+      responses:
+        "201":
+          description: The device was registered.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Device" }
+        "400":
+          description: The name or public key was rejected.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: Not signed in.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: The CSRF token was missing or wrong.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: That public key is already registered.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "503":
+          description: |
+            The address pool is exhausted. An operator has to widen it, which
+            is a re-addressing exercise.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /api/v1/devices/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      tags: [Devices]
+      summary: Fetch a device
+      operationId: getDevice
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: The device.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Device" }
+        "401":
+          description: Not signed in.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: |
+            No such device — including one that exists but belongs to another
+            user, because reporting `403` would confirm it exists.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+    delete:
+      tags: [Devices]
+      summary: Revoke a device
+      description: |
+        Removes a device from the network and releases its addresses back to
+        the pool, in one transaction.
+
+        The record is kept and marked revoked, so the audit trail survives —
+        and its public key therefore stays blocked permanently. That is
+        intended: a revoked key that could be registered again would not really
+        be revoked.
+      operationId: revokeDevice
+      security:
+        - sessionCookie: []
+      responses:
+        "204":
+          description: The device was revoked.
+        "401":
+          description: Not signed in.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: The CSRF token was missing or wrong.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: No such device.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: The device has already been revoked.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /api/v1/devices/enroll:
+    post:
+      tags: [Devices]
+      summary: Enrol a device with a setup key
+      description: |
+        Redeems a setup key and registers the device it authorises. The device
+        is owned by the account that created the key.
+
+        **Unauthenticated**: the setup key is itself the credential, which is
+        the whole point of a headless enrolment. It therefore carries the same
+        tighter rate limit as sign-in.
+
+        Every rejected key — revoked, expired, used up, or never existing —
+        produces an identical `401`. Distinguishing them would tell whoever is
+        holding a rejected key whether it ever existed.
+
+        Redemption and device creation are one transaction, so a rejected
+        device does not spend a single-use key.
+      operationId: enrollDevice
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EnrollDeviceRequest" }
+      responses:
+        "201":
+          description: The device was enrolled.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Device" }
+        "400":
+          description: The name or public key was rejected.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: The setup key was not accepted.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              examples:
+                rejected:
+                  value:
+                    error:
+                      code: unauthorized
+                      message: that setup key is not valid
+        "409":
+          description: That public key is already registered.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /api/v1/setup-keys:
+    get:
+      tags: [Setup keys]
+      summary: List setup keys
+      description: |
+        Returns every setup key. The keys themselves are absent — only their
+        display hints, which cannot enrol anything.
+      operationId: listSetupKeys
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: The setup keys.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SetupKeyList" }
+        "403":
+          description: Administrator only.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+    post:
+      tags: [Setup keys]
+      summary: Create a setup key
+      description: |
+        Issues an enrolment credential and returns it **once**. It cannot be
+        recovered afterwards; the server stores only its hash.
+
+        A key expires by default. Creating one that never expires requires
+        `never_expires`, so that choosing it is a deliberate act rather than an
+        omission.
+      operationId: createSetupKey
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateSetupKeyRequest" }
+      responses:
+        "201":
+          description: The key was created. This is the only time it is returned.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CreateSetupKeyResponse" }
+        "400":
+          description: The request was malformed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Administrator only, or the CSRF token was missing.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /api/v1/setup-keys/{id}:
+    delete:
+      tags: [Setup keys]
+      summary: Revoke a setup key
+      description: |
+        Ends a key immediately. Revoking one twice is not an error, and the
+        recorded time stays the first revocation — when it actually stopped
+        working.
+      operationId: revokeSetupKey
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204":
+          description: The key was revoked.
+        "403":
+          description: Administrator only, or the CSRF token was missing.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: No such setup key.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
 components:
   securitySchemes:
     sessionCookie:
@@ -759,6 +1071,155 @@ components:
         provider: { type: string, enum: [local, oidc] }
         created_at: { type: string, format: date-time }
         last_login_at: { type: string, format: date-time }
+
+    Device:
+      type: object
+      required: [id, user_id, name, public_key, created_at]
+      description: |
+        A machine on the network.
+
+        There is deliberately no private key field of any kind — not the value,
+        not a placeholder. A schema with somewhere to put one is a schema that
+        will eventually carry it.
+      properties:
+        id:
+          type: string
+          examples: ["dev_4KQZ9V3B2N7XR8T0YCFHJM"]
+        user_id: { type: string }
+        name: { type: string }
+        public_key:
+          type: string
+          description: A base64-encoded 32-byte WireGuard **public** key.
+        os: { type: string }
+        hostname: { type: string }
+        ipv4:
+          type: string
+          description: Cleared on revocation, when the address returns to the pool.
+        ipv6: { type: string }
+        enrolled_with:
+          type: string
+          description: |
+            The setup key this device was enrolled with, if any. It survives
+            that key's deletion, so the audit trail is not lost with it.
+        created_at: { type: string, format: date-time }
+        last_seen_at: { type: string, format: date-time }
+        revoked_at: { type: string, format: date-time }
+
+    DeviceList:
+      type: object
+      required: [devices]
+      properties:
+        devices:
+          type: array
+          items: { $ref: "#/components/schemas/Device" }
+
+    RegisterDeviceRequest:
+      type: object
+      required: [name, public_key]
+      properties:
+        name: { type: string, maxLength: 64 }
+        public_key:
+          type: string
+          description: |
+            A base64-encoded 32-byte WireGuard public key. An all-zero key is
+            refused: it is what an uninitialised buffer looks like, and
+            accepting it would mean enrolling a device whose key generation
+            silently failed.
+        os: { type: string, maxLength: 128 }
+        hostname: { type: string, maxLength: 128 }
+
+    EnrollDeviceRequest:
+      type: object
+      required: [setup_key, name, public_key]
+      properties:
+        setup_key:
+          type: string
+          description: The credential issued by POST /api/v1/setup-keys.
+        name: { type: string, maxLength: 64 }
+        public_key: { type: string }
+        os: { type: string, maxLength: 128 }
+        hostname: { type: string, maxLength: 128 }
+
+    SetupKey:
+      type: object
+      required: [id, display_hint, created_by, created_at, max_uses, uses, usable]
+      description: |
+        An enrolment credential. The key itself is absent: it is returned once,
+        by CreateSetupKeyResponse, and only its hash is stored.
+      properties:
+        id:
+          type: string
+          examples: ["sk_4KQZ9V3B2N7XR8T0YCFHJM"]
+        display_hint:
+          type: string
+          description: |
+            The leading characters of the key, so it can be recognised in a
+            list. Far too little to use — an attacker holding it still faces
+            the remaining entropy.
+        description: { type: string, maxLength: 200 }
+        tags:
+          type: array
+          items: { type: string }
+          description: |
+            The key's scope. Phase 6's policy engine will read these. Nothing
+            enforces them today.
+        created_by: { type: string }
+        created_at: { type: string, format: date-time }
+        expires_at:
+          type: string
+          format: date-time
+          description: Absent only on a key created with `never_expires`.
+        max_uses:
+          type: integer
+          description: Zero means unlimited; one makes the key single-use.
+        uses: { type: integer }
+        revoked_at: { type: string, format: date-time }
+        usable:
+          type: boolean
+          description: |
+            Whether the key would be accepted right now, so a client need not
+            re-derive expiry and use-count logic.
+
+    SetupKeyList:
+      type: object
+      required: [keys]
+      properties:
+        keys:
+          type: array
+          items: { $ref: "#/components/schemas/SetupKey" }
+
+    CreateSetupKeyRequest:
+      type: object
+      properties:
+        description: { type: string, maxLength: 200 }
+        tags:
+          type: array
+          items: { type: string }
+        expires_in_hours:
+          type: integer
+          minimum: 0
+          description: Omitted or zero means the server default of 7 days.
+        never_expires:
+          type: boolean
+          description: |
+            Creates a key with no expiry. Required explicitly, because a
+            credential that never expires is one you will still be finding in
+            shell histories years from now.
+        max_uses:
+          type: integer
+          minimum: 0
+          description: Zero means unlimited; one makes the key single-use.
+
+    CreateSetupKeyResponse:
+      type: object
+      required: [key, setup_key]
+      properties:
+        key: { $ref: "#/components/schemas/SetupKey" }
+        setup_key:
+          type: string
+          description: |
+            The credential, returned **exactly once**. It cannot be recovered
+            afterwards. Show it to the operator, then forget it.
 
     Session:
       type: object

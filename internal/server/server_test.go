@@ -354,12 +354,16 @@ func TestMetricsAreHonestlyUnimplementedWhenEnabled(t *testing.T) {
 
 func TestUnimplementedFeaturesAreAbsentRatherThanFaked(t *testing.T) {
 	t.Parallel()
-	// Devices, users, routes and policies arrive in later phases. Until then
-	// they must not answer at all — an empty list would read as "you have no
-	// devices" rather than "this does not exist yet".
+	// User management, routes, policies and peers arrive in later phases.
+	// Until then they must not answer at all — an empty list would read as
+	// "you have none" rather than "this does not exist yet".
+	//
+	// Devices used to be on this list and no longer are: they exist now, and
+	// asserting they 404 would be the same dishonesty in reverse. Their
+	// coverage lives in devices_test.go.
 	srv := newServer(t, nil)
 	for _, path := range []string{
-		"/api/v1/devices", "/api/v1/users", "/api/v1/routes", "/api/v1/policies", "/api/v1/peers",
+		"/api/v1/users", "/api/v1/routes", "/api/v1/policies", "/api/v1/peers",
 	} {
 		rec := do(t, srv, http.MethodGet, path, "")
 		if rec.Code != http.StatusNotFound {

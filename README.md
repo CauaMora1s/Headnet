@@ -77,12 +77,16 @@ commands under [Quick start](#quick-start).
 | Rate limiting | Per-client token bucket, on by default |
 | CLI | `version`, `diagnostics` |
 | Web UI | Live control-plane status |
+| Accounts | First-run setup, sign-in, sessions, CSRF |
+| Devices | Register, enrol with a setup key, list, revoke |
+| Setup keys | Create, list, revoke — expiring and optionally single-use |
+| Addressing | Automatic IPv4/IPv6 allocation and reclamation |
 
 | Not built yet | Planned for |
 | --- | --- |
-| User accounts and authentication | [Phase 1](docs/ROADMAP.md#phase-1--server-mvp) |
-| Device enrollment | [Phase 1](docs/ROADMAP.md#phase-1--server-mvp) |
+| Web UI screens for devices and accounts | [Phase 1](docs/ROADMAP.md#phase-1--server-mvp) |
 | Client daemon and WireGuard integration | [Phase 2](docs/ROADMAP.md#phase-2--client-mvp) |
+| `headnet login` and the admin CLI | [Phase 2](docs/ROADMAP.md#phase-2--client-mvp) |
 | Peer distribution, device-to-device traffic | [Phase 3](docs/ROADMAP.md#phase-3--device-to-device-networking) |
 | NAT traversal | [Phase 4](docs/ROADMAP.md#phase-4--nat-traversal) |
 | Relay | [Phase 5](docs/ROADMAP.md#phase-5--relay) |

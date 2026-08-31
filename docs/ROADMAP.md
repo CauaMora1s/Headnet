@@ -184,10 +184,11 @@ uniqueness guarantee rather than application logic that races.
 2. ~~`users` and password hashing~~ — done
 3. ~~Sessions and the login flow~~ — done
 4. ~~First-run bootstrap~~ — done
-5. Setup keys
-6. Device registration
+5. ~~Setup keys~~ — done
+6. ~~Device registration, including setup-key redemption~~ — done
 7. Web UI: sign-in, device list, device revocation
-8. CLI: `admin users`, `admin devices`
+8. CLI: `admin users`, `admin devices` — deferred to Phase 2, where
+   `headnet login` provides the credential storage they need
 
 ### Testing
 

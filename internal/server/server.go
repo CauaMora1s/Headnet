@@ -21,7 +21,9 @@ import (
 
 	"github.com/CauaMora1s/Headnet/internal/auth"
 	"github.com/CauaMora1s/Headnet/internal/config"
+	"github.com/CauaMora1s/Headnet/internal/devices"
 	"github.com/CauaMora1s/Headnet/internal/httpapi"
+	"github.com/CauaMora1s/Headnet/internal/network"
 	"github.com/CauaMora1s/Headnet/internal/storage"
 	"github.com/CauaMora1s/Headnet/packages/shared"
 )
@@ -53,6 +55,7 @@ type Server struct {
 
 	users    *auth.UserStore
 	sessions *auth.SessionStore
+	devices  *devices.Store
 
 	// dummyHash is verified against when a sign-in names an account that does
 	// not exist, so the attempt costs the same as one that does. Computed once
@@ -95,6 +98,17 @@ func New(opts Options) (*Server, error) {
 		return nil, fmt.Errorf("server: preparing the authentication timing defence: %w", err)
 	}
 
+	// The allocator re-validates the pools rather than trusting that
+	// Config.Validate ran, so a server can never hand out loopback addresses.
+	allocator, err := network.NewAllocator(opts.DB, opts.Config.Network)
+	if err != nil {
+		return nil, fmt.Errorf("server: %w", err)
+	}
+	deviceStore, err := devices.NewStore(opts.DB, allocator)
+	if err != nil {
+		return nil, fmt.Errorf("server: %w", err)
+	}
+
 	s := &Server{
 		cfg:        opts.Config,
 		db:         opts.DB,
@@ -110,6 +124,7 @@ func New(opts Options) (*Server, error) {
 			Lifetime:    opts.Config.Auth.SessionLifetime,
 			IdleTimeout: opts.Config.Auth.SessionIdleTimeout,
 		}),
+		devices: deviceStore,
 	}
 
 	if u, err := url.Parse(opts.Config.Server.BaseURL); err == nil && u.Scheme == "https" {
