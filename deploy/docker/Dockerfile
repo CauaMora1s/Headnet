@@ -20,7 +20,7 @@
 # See docs/deployment.md.
 
 # --- Stage 1: build the binaries --------------------------------------------
-FROM golang:1.25-alpine AS build
+FROM golang:1.27-alpine AS build
 WORKDIR /src
 
 # Static binaries: the SQLite driver is pure Go precisely so cgo can stay off,
