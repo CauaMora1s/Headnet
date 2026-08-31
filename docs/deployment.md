@@ -226,6 +226,42 @@ Trusted-proxy support is a
 
 ---
 
+## Serving the web UI
+
+**The server binary does not serve the web UI yet.** It serves the API only;
+embedding the built assets is a Phase 2 item.
+
+Until then, build the UI and serve the static files from the same origin as the
+API — the session cookie is `SameSite=Lax` and scoped to that origin, so a UI
+on a different host will not be able to sign in.
+
+```bash
+make build-web    # writes apps/web/dist
+```
+
+With nginx, add a location block alongside the API proxy:
+
+```nginx
+    root /var/www/headnet;
+
+    location / {
+        try_files $uri /index.html;   # the UI routes client-side
+    }
+
+    location /api/ { proxy_pass http://127.0.0.1:8080; }
+    location /health { proxy_pass http://127.0.0.1:8080; }
+    location /ready  { proxy_pass http://127.0.0.1:8080; }
+```
+
+The `try_files` fallback matters: the UI uses real paths rather than hash
+routing, so a refresh on `/devices` has to return `index.html` rather than a
+404.
+
+For development, `make dev-web` runs Vite with the API proxied, and neither of
+these steps is needed.
+
+---
+
 ## Health checks
 
 | Endpoint | Use it for | Fails when |

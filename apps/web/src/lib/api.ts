@@ -56,6 +56,67 @@ export interface VersionResponse {
   capabilities: string[];
 }
 
+export interface AuthStatus {
+  bootstrap_required: boolean;
+  providers: string[];
+}
+
+export interface User {
+  id: string;
+  email: string;
+  display_name?: string;
+  role: 'admin' | 'member';
+  provider: 'local' | 'oidc';
+  created_at: string;
+  last_login_at?: string;
+}
+
+export interface Session {
+  user: User;
+  /** Empty on GET /auth/session: only a hash is stored server-side. */
+  csrf_token: string;
+  expires_at: string;
+}
+
+/**
+ * A machine on the network.
+ *
+ * Note what is absent: there is no private key field, because a device
+ * generates its own key pair and sends only the public half.
+ */
+export interface Device {
+  id: string;
+  user_id: string;
+  name: string;
+  public_key: string;
+  os?: string;
+  hostname?: string;
+  /** Cleared on revocation, when the address returns to the pool. */
+  ipv4?: string;
+  ipv6?: string;
+  enrolled_with?: string;
+  created_at: string;
+  last_seen_at?: string;
+  revoked_at?: string;
+}
+
+export interface DeviceList {
+  devices: Device[];
+}
+
+export interface RegisterDeviceRequest {
+  name: string;
+  public_key: string;
+  os?: string;
+  hostname?: string;
+}
+
+/** The name of the cookie carrying the CSRF token. */
+export const CSRF_COOKIE = 'headnet_csrf';
+
+/** The header the CSRF token is echoed in. */
+export const CSRF_HEADER = 'X-CSRF-Token';
+
 /**
  * An error carrying the server's structured envelope.
  *
@@ -94,6 +155,11 @@ export class ApiError extends Error {
       this.code === 'internal'
     );
   }
+
+  /** Whether this means the caller is not (or is no longer) signed in. */
+  get unauthenticated(): boolean {
+    return this.code === 'unauthorized';
+  }
 }
 
 /** The subset of `fetch` this client needs, so tests can supply their own. */
@@ -106,20 +172,48 @@ export interface ClientOptions {
   fetch?: FetchLike;
   /** Abandon a request after this many milliseconds. */
   timeoutMs?: number;
+  /**
+   * Reads the CSRF token. Defaults to reading the cookie, and is injectable
+   * because tests have no document.
+   */
+  readCsrfToken?: () => string | undefined;
 }
 
 const DEFAULT_TIMEOUT_MS = 10_000;
+
+/** Reads a cookie by name, or undefined when it is absent. */
+export function readCookie(name: string): string | undefined {
+  if (typeof document === 'undefined') return undefined;
+  for (const part of document.cookie.split(';')) {
+    const [key, ...rest] = part.trim().split('=');
+    if (key === name) return decodeURIComponent(rest.join('='));
+  }
+  return undefined;
+}
+
+interface RequestOptions {
+  method?: string;
+  body?: unknown;
+  /** Statuses to treat as a successful answer rather than a failure. */
+  acceptStatuses?: number[];
+  /** True when the response carries no body. */
+  empty?: boolean;
+}
 
 export class HeadnetClient {
   readonly #baseUrl: string;
   readonly #fetch: FetchLike;
   readonly #timeoutMs: number;
+  readonly #readCsrfToken: () => string | undefined;
 
   constructor(options: ClientOptions = {}) {
     this.#baseUrl = (options.baseUrl ?? '').replace(/\/+$/, '');
     this.#fetch = options.fetch ?? ((input, init) => globalThis.fetch(input, init));
     this.#timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    this.#readCsrfToken = options.readCsrfToken ?? (() => readCookie(CSRF_COOKIE));
   }
+
+  // --- operations ----------------------------------------------------------
 
   /**
    * Reads the aggregate health of the control plane.
@@ -137,18 +231,83 @@ export class HeadnetClient {
     return this.#request<VersionResponse>('/api/v1/version');
   }
 
-  async #request<T>(path: string, options: { acceptStatuses?: number[] } = {}): Promise<T> {
+  // --- authentication ------------------------------------------------------
+
+  /** Whether the installation still needs its first administrator. */
+  async authStatus(): Promise<AuthStatus> {
+    return this.#request<AuthStatus>('/api/v1/auth/status');
+  }
+
+  /** Creates the first administrator on a fresh installation. */
+  async bootstrap(email: string, password: string, displayName?: string): Promise<Session> {
+    return this.#request<Session>('/api/v1/auth/bootstrap', {
+      method: 'POST',
+      body: { email, password, ...(displayName ? { display_name: displayName } : {}) },
+    });
+  }
+
+  async login(email: string, password: string): Promise<Session> {
+    return this.#request<Session>('/api/v1/auth/login', {
+      method: 'POST',
+      body: { email, password },
+    });
+  }
+
+  async logout(): Promise<void> {
+    await this.#request<void>('/api/v1/auth/logout', { method: 'POST', empty: true });
+  }
+
+  /** The caller's current session, or an `unauthorized` ApiError. */
+  async session(): Promise<Session> {
+    return this.#request<Session>('/api/v1/auth/session');
+  }
+
+  // --- devices -------------------------------------------------------------
+
+  async devices(): Promise<Device[]> {
+    const list = await this.#request<DeviceList>('/api/v1/devices');
+    return list.devices ?? [];
+  }
+
+  async registerDevice(device: RegisterDeviceRequest): Promise<Device> {
+    return this.#request<Device>('/api/v1/devices', { method: 'POST', body: device });
+  }
+
+  async revokeDevice(id: string): Promise<void> {
+    await this.#request<void>(`/api/v1/devices/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      empty: true,
+    });
+  }
+
+  // --- transport -----------------------------------------------------------
+
+  async #request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+    const method = options.method ?? 'GET';
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.#timeoutMs);
+
+    const headers: Record<string, string> = { Accept: 'application/json' };
+    if (options.body !== undefined) {
+      headers['Content-Type'] = 'application/json';
+    }
+    // Safe methods do not need a CSRF token, and sending one on every read
+    // would be noise. Anything that changes state must carry it.
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+      const token = this.#readCsrfToken();
+      if (token) headers[CSRF_HEADER] = token;
+    }
 
     let response: Response;
     try {
       response = await this.#fetch(`${this.#baseUrl}${path}`, {
-        headers: { Accept: 'application/json' },
+        method,
+        headers,
         signal: controller.signal,
-        // The API is same-origin and cookie-authenticated from Phase 1
-        // onwards, so credentials must ride along.
+        // The API is same-origin and cookie-authenticated, so credentials must
+        // ride along.
         credentials: 'same-origin',
+        ...(options.body !== undefined ? { body: JSON.stringify(options.body) } : {}),
       });
     } catch (cause) {
       throw new ApiError(
@@ -162,10 +321,14 @@ export class HeadnetClient {
     }
 
     const requestId = response.headers.get('X-Request-Id') ?? undefined;
-    const accepted = options.acceptStatuses ?? [200];
+    const accepted = options.acceptStatuses ?? [200, 201, 204];
 
     if (!response.ok && !accepted.includes(response.status)) {
       throw await toApiError(response, requestId);
+    }
+
+    if (options.empty || response.status === 204) {
+      return undefined as T;
     }
 
     try {

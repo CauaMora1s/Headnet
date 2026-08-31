@@ -76,7 +76,7 @@ commands under [Quick start](#quick-start).
 | Structured logging | JSON or text, request IDs, no secrets |
 | Rate limiting | Per-client token bucket, on by default |
 | CLI | `version`, `diagnostics` |
-| Web UI | Live control-plane status |
+| Web UI | First-run setup, sign-in, dashboard, device management |
 | Accounts | First-run setup, sign-in, sessions, CSRF |
 | Devices | Register, enrol with a setup key, list, revoke |
 | Setup keys | Create, list, revoke — expiring and optionally single-use |
@@ -84,7 +84,7 @@ commands under [Quick start](#quick-start).
 
 | Not built yet | Planned for |
 | --- | --- |
-| Web UI screens for devices and accounts | [Phase 1](docs/ROADMAP.md#phase-1--server-mvp) |
+| Serving the web UI from the server binary | [Phase 2](docs/ROADMAP.md#phase-2--client-mvp) |
 | Client daemon and WireGuard integration | [Phase 2](docs/ROADMAP.md#phase-2--client-mvp) |
 | `headnet login` and the admin CLI | [Phase 2](docs/ROADMAP.md#phase-2--client-mvp) |
 | Peer distribution, device-to-device traffic | [Phase 3](docs/ROADMAP.md#phase-3--device-to-device-networking) |

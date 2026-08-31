@@ -7,11 +7,17 @@
 # business running as root or shipping a shell an attacker could use after a
 # compromise.
 #
-# Note: the web UI is not built into this image. The server does not serve
-# static files yet — that arrives with the administrative screens in Phase 1,
-# at which point a Node stage will build apps/web and the Go binary will embed
-# the result. Building the UI here today would produce a bundle nothing serves.
-# See docs/ROADMAP.md.
+# Note: the web UI is not built into this image, and the server does not serve
+# static files.
+#
+# An earlier version of this comment said embedding would arrive with the
+# administrative screens in Phase 1. The screens exist now; the embedding does
+# not, and is deferred to Phase 2 alongside the client daemon. Until then the
+# UI has to be served separately — by the Vite dev server, or as static files
+# behind the same reverse proxy that fronts this container, so that it shares
+# an origin with the API and its session cookie works.
+#
+# See docs/deployment.md.
 
 # --- Stage 1: build the binaries --------------------------------------------
 FROM golang:1.25-alpine AS build

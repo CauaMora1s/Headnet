@@ -140,8 +140,21 @@ No release has been tagged yet. Everything below is on `main`.
 **Web UI**
 
 - Svelte 5, TypeScript, Vite and Tailwind
+- First-run setup, sign-in and sign-out, with authentication state derived once
+  and shared, so a page cannot render a signed-in shell around a session the
+  server has already discarded
+- A devices page: register, list and revoke. Revoking asks for confirmation and
+  names the device and its address, because a mis-clicked revoke removes a
+  machine from a network that may be the only way to reach it
+- A hand-written router over the History API. Four routes did not justify a
+  dependency, for the same reason the Go side uses the standard library's mux
+- CSRF tokens attached to state-changing requests and not to reads
 - Live control-plane status from real endpoints
-- An explicit list of what has not been built, rather than empty tables
+- An explicit list of what has not been built, rather than empty tables. Areas
+  whose API works but whose screens do not are marked "API only" — claiming
+  something is missing when it works is the same failure as the reverse
+- **Not yet served by the server binary.** The UI runs against the dev server or
+  behind the same reverse proxy as the API; embedding it is a Phase 2 item
 
 **Infrastructure**
 

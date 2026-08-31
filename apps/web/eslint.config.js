@@ -16,7 +16,11 @@ export default ts.config(
     },
   },
   {
-    files: ['**/*.svelte'],
+    // eslint-plugin-svelte parses .svelte.ts and .svelte.js with the Svelte
+    // parser so that runes are understood outside components. That parser
+    // needs to be told to hand the TypeScript through, or every type
+    // annotation in a rune module is a syntax error.
+    files: ['**/*.svelte', '**/*.svelte.ts', '**/*.svelte.js'],
     languageOptions: {
       parserOptions: { parser: ts.parser },
     },

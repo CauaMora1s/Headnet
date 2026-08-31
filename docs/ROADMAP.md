@@ -186,7 +186,9 @@ uniqueness guarantee rather than application logic that races.
 4. ~~First-run bootstrap~~ — done
 5. ~~Setup keys~~ — done
 6. ~~Device registration, including setup-key redemption~~ — done
-7. Web UI: sign-in, device list, device revocation
+7. ~~Web UI: sign-in, device list, device revocation~~ — done. The
+   binary does not yet *serve* the built UI; that moves to Phase 2 with the
+   client daemon, and until then it is served by the dev server or a proxy
 8. CLI: `admin users`, `admin devices` — deferred to Phase 2, where
    `headnet login` provides the credential storage they need
 

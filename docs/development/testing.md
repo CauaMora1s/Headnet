@@ -203,8 +203,17 @@ leave the value typed as a union with the success type, so a test could
 silently assert against a successful response — `svelte-check` caught exactly
 that.
 
+Route matching is tested as a pure function, separately from the reactive
+navigation state, so it needs neither a DOM nor a Svelte runtime.
+
+One frontend test bug worth remembering: `new Response('', { status: 204 })`
+throws, because a 204 cannot carry a body — not even an empty string. The stub
+surfaced that as a bogus network error rather than as the case under test, so
+the helper now passes `null` for null-body statuses.
+
 Component tests with Testing Library arrive as the UI grows; Playwright is
-planned for end-to-end coverage.
+planned for end-to-end coverage. In the meantime the browser path is walked by
+hand against a real server before each UI change lands.
 
 ---
 
