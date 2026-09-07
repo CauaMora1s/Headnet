@@ -13,15 +13,41 @@ releases, are accompanied by an advisory. See [SECURITY.md](SECURITY.md).
 
 ## [Unreleased]
 
-The project foundation: [Phase 0](docs/ROADMAP.md#phase-0--foundation).
+[Phase 0](docs/ROADMAP.md#phase-0--foundation) and
+[Phase 1](docs/ROADMAP.md#phase-1--server-mvp), with
+[Phase 2](docs/ROADMAP.md#phase-2--client-mvp) under way.
 
 No release has been tagged yet. Everything below is on `main`.
 
-> **This build contains no VPN functionality.** The control plane starts,
-> stores state and reports its health. No devices can be enrolled, no keys are
-> managed, and no traffic is carried. Every unimplemented feature says so.
+> **This build carries no VPN traffic.** The control plane starts, stores
+> state and reports its health; devices can be enrolled and a device can
+> generate and store its own key. Nothing brings up a network interface,
+> nothing distributes peers, and no packet has ever crossed a Headnet tunnel.
+> Every unimplemented feature says so.
 
 ### Added
+
+**Device keys**
+
+- Curve25519 key generation on the device, from the platform CSPRNG and
+  clamped exactly as WireGuard clamps it. The derivation is checked against the
+  RFC 7748 test vector, which is the difference between calling X25519 and
+  calling something that resembles it.
+- **Security** — a private key type that cannot be turned into a string by any
+  supported route: `String`, `GoString`, `Format`, `MarshalText`,
+  `MarshalJSON` and `MarshalBinary` all refuse, and marshalling returns an
+  *error* rather than a redacted placeholder so a struct containing a key
+  fails to encode instead of encoding a field that silently did nothing. The
+  `fmt.Formatter` implementation exists because a test caught `%d` printing
+  the raw scalar as 32 decimal numbers.
+- **Security** — the key file is readable only by the account the daemon runs
+  as: 0600 in a 0700 directory on Unix, a protected DACL that replaces
+  inherited entries on Windows. It is **verified on every read**, not merely
+  set once on write, because the realistic causes of a widened key file are a
+  restored backup or a careless `chmod -R` months later.
+- A key is never silently replaced. A corrupt or insecure key file is
+  reported, not overwritten — overwriting would re-enrol the machine under a
+  new identity and destroy the evidence of whatever caused it.
 
 **Devices**
 

@@ -81,11 +81,12 @@ commands under [Quick start](#quick-start).
 | Devices | Register, enrol with a setup key, list, revoke |
 | Setup keys | Create, list, revoke — expiring and optionally single-use |
 | Addressing | Automatic IPv4/IPv6 allocation and reclamation |
+| Device keys | Curve25519 generation and storage on the device, private to it |
 
 | Not built yet | Planned for |
 | --- | --- |
 | Serving the web UI from the server binary | [Phase 2](docs/ROADMAP.md#phase-2--client-mvp) |
-| Client daemon and WireGuard integration | [Phase 2](docs/ROADMAP.md#phase-2--client-mvp) |
+| Client daemon and WireGuard interfaces | [Phase 2](docs/ROADMAP.md#phase-2--client-mvp) |
 | `headnet login` and the admin CLI | [Phase 2](docs/ROADMAP.md#phase-2--client-mvp) |
 | Peer distribution, device-to-device traffic | [Phase 3](docs/ROADMAP.md#phase-3--device-to-device-networking) |
 | NAT traversal | [Phase 4](docs/ROADMAP.md#phase-4--nat-traversal) |

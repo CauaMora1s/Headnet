@@ -23,8 +23,8 @@ elsewhere.
 | Phase | | Status |
 | --- | --- | --- |
 | 0 | [Foundation](#phase-0--foundation) | **Complete** |
-| 1 | [Server MVP](#phase-1--server-mvp) | Next |
-| 2 | [Client MVP](#phase-2--client-mvp) | Planned |
+| 1 | [Server MVP](#phase-1--server-mvp) | **Complete** |
+| 2 | [Client MVP](#phase-2--client-mvp) | In progress |
 | 3 | [Device-to-device networking](#phase-3--device-to-device-networking) | Planned |
 | 4 | [NAT traversal](#phase-4--nat-traversal) | Planned |
 | 5 | [Relay](#phase-5--relay) | Planned |
@@ -226,10 +226,18 @@ Protocol stays at v1; these are additive endpoints.
 
 ### Definition of Done
 
-- [ ] An administrator can install, bootstrap, sign in and register a device
-- [ ] No endpoint accepts an unauthenticated state change
-- [ ] Every new endpoint is in `openapi.yaml`
+- [x] An administrator can install, bootstrap, sign in and register a device
+- [x] No endpoint accepts an unauthenticated state change. `/devices/enroll`
+      carries no session, but it is not unauthenticated: the setup key is the
+      credential, and it is rate-limited alongside login
+- [x] Every new endpoint is in `openapi.yaml`
 - [ ] Security review of the authentication and enrolment flows recorded
+
+The last box is deliberately still open. Threat-model entries were written
+alongside the code, but no discrete review of the finished flows has been
+carried out and recorded, and ticking it because the code "had security
+thought about" would be exactly the sort of claim this file is supposed not to
+make. Phase 1 is otherwise complete.
 
 ---
 
@@ -297,7 +305,10 @@ GET  /api/v1/network/config          address, DNS, peers (empty until Phase 3)
 ### Implementation plan
 
 1. `internal/wireguard`: interface lifecycle, per platform
-2. Local key generation and storage
+2. ~~Local key generation and storage~~ — done. Curve25519 key pairs checked
+   against the RFC 7748 vector, a private key type that cannot be rendered or
+   marshalled by any route, and a key file only the daemon's own account can
+   read — verified on every load, not merely set once on write
 3. Daemon skeleton: lifecycle, local API, configuration persistence
 4. Enrolment against a setup key
 5. Configuration sync and heartbeat
