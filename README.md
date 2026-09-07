@@ -8,13 +8,11 @@ devices connect directly to each other. Nobody else holds your keys.
 
 > **Project status: early foundation. There is no working VPN yet.**
 >
-> This repository currently contains the project skeleton described in
-> [Phase 0 of the roadmap](docs/ROADMAP.md): a control-plane server that
-> starts, stores state and reports its health; a CLI; a web UI; and the
-> testing, documentation and deployment scaffolding around them.
+> The control plane supports accounts, setup-key enrolment, device inventory
+> and revocation. Phase 2 now adds local device keys and authenticated device
+> check-ins. See the [roadmap](docs/ROADMAP.md) for the remaining work.
 >
-> No devices can be enrolled, no keys are managed, and **no traffic is
-> carried**. Nothing in this build simulates otherwise — every unimplemented
+> **No VPN traffic is carried.** Nothing in this build simulates otherwise — every unimplemented
 > feature says so, in the API, in the CLI and in the UI. See
 > [What actually works today](#what-actually-works-today).
 
@@ -79,6 +77,7 @@ commands under [Quick start](#quick-start).
 | Web UI | First-run setup, sign-in, dashboard, device management |
 | Accounts | First-run setup, sign-in, sessions, CSRF |
 | Devices | Register, enrol with a setup key, list, revoke |
+| Device authentication | One-time bearer token at enrolment, self lookup, heartbeat and own network configuration |
 | Setup keys | Create, list, revoke — expiring and optionally single-use |
 | Addressing | Automatic IPv4/IPv6 allocation and reclamation |
 | Device keys | Curve25519 generation and storage on the device, private to it |

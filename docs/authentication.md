@@ -269,9 +269,46 @@ Two separate things, and both matter:
 **Revoking a session** signs a user out of the web UI. Immediate, because
 sessions are server-side.
 
-**Revoking a device** removes it from the network. This must *disconnect*, not
-merely delist: peers are told to drop it and the tunnel dies. A device removed
-from a list whose peers still hold its configuration is still on the network.
+**Revoking a device** deletes its bearer credential and releases its addresses
+in one transaction. Subsequent device API requests fail immediately. Once
+peer distribution exists in Phase 3, revocation must also tell peers to drop
+the device. No tunnel is running today, so tunnel disconnection is still planned.
+
+## Device authentication
+
+**Implemented:** setup-key enrolment returns the existing device fields plus
+`device_token` and `instance_id`. The token contains 32 CSPRNG bytes and an
+`hnd_` prefix, and is returned exactly once with `Cache-Control: no-store`.
+Only its SHA-256 hash is stored in `device_tokens`. Credential creation,
+device creation, address allocation and setup-key redemption are atomic.
+
+The client must persist the token as a local secret and pin `instance_id`.
+Never log it or place it in a URL. Send it as `Authorization: Bearer <token>`
+over HTTPS; the normal server production HTTPS policy applies. The client
+daemon and its persistence/pinning enforcement are still separate work.
+
+| Request | Result |
+| --- | --- |
+| `GET /api/v1/devices/me` | Only the authenticated device, never its token |
+| `POST /api/v1/devices/me/heartbeat` | Empty request body; `204`, records server receipt time |
+| `GET /api/v1/network/config` | Deployment ID, own device ID and allocated addresses; DNS disabled, peers empty |
+
+Device routes accept no session cookie or query-string credential. They do
+not require CSRF tokens because authorization is sent explicitly in a header.
+Conversely, a device token grants no browser-session or administrative rights.
+Missing, malformed, unknown and revoked device tokens receive the same `401`
+bearer challenge. Normal per-client rate limiting applies. Credential lookup
+is not cached; heartbeat checks revocation again in the database write.
+
+`last_seen_at` means contact with the control plane, not a working VPN.
+Network configuration currently has no peers (Phase 3) and no DNS resolvers
+(Phase 7). It is not enough to establish a tunnel.
+
+There is no token expiry, recovery or rotation endpoint yet. If a token is lost
+or exposed, revoke the device and enrol again using a new locally generated
+WireGuard key pair and an available setup key. The old public key stays blocked.
+Inventory records created through the web UI or before migration 0007 do not
+receive a credential automatically. Their administrative workflow is unchanged.
 
 ---
 
@@ -283,6 +320,7 @@ from a list whose peers still hold its configuration is still on the network.
 | OIDC subject identifiers | For federated accounts |
 | Session records | Revocable |
 | Setup key hashes | Never the keys themselves |
+| Device token hashes | Revoked atomically with the device; never raw tokens |
 | Device **public** keys | Never private keys |
 
 Nothing here can decrypt VPN traffic. That is the point: a stolen database

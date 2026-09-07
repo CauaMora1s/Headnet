@@ -23,6 +23,22 @@ They move independently. Most releases change only the first.
 
 ---
 
+## Migration 0007: device credentials
+
+Adds `device_tokens` on SQLite and PostgreSQL without modifying existing device
+records. Only new setup-key enrolments issue a device bearer token. Existing
+inventory records remain administratively accessible but cannot authenticate
+as devices; revoke and enrol with a new WireGuard key pair if device API access
+is needed. Tokens cannot be recovered from the database.
+
+Back up before upgrading. The migration is forward-only; removing the table
+would destroy device credentials and require re-enrolment. Use a compatible
+database backup when reverting to an older binary, following the rollback
+procedure below. Restoring a backup taken before a revocation can also restore
+the credential's validity; repeat any revocations made since that backup.
+
+---
+
 ## Upgrade order
 
 **Upgrade the server first, then the clients.**

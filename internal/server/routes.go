@@ -64,6 +64,15 @@ func (s *Server) routes() http.Handler {
 		s.authenticated(http.HandlerFunc(s.handleRevokeDevice), false))
 	mux.Handle("POST "+api.BasePath+"/devices/enroll",
 		s.rateLimitAuth(http.HandlerFunc(s.handleEnrollDevice)))
+	// Device credentials are deliberately separate from browser sessions.
+	// These routes use the global request budget, not rateLimitAuth: routine
+	// heartbeats must not compete with sign-in attempts for the tighter budget.
+	mux.Handle("GET "+api.BasePath+"/devices/me",
+		s.requireDevice(s.handleDeviceMe))
+	mux.Handle("POST "+api.BasePath+"/devices/me/heartbeat",
+		s.requireDevice(s.handleDeviceHeartbeat))
+	mux.Handle("GET "+api.BasePath+"/network/config",
+		s.requireDevice(s.handleDeviceNetworkConfig))
 
 	// Setup keys are administrative: they mint credentials that enrol devices
 	// onto the network, so issuing one is an administrator's decision.

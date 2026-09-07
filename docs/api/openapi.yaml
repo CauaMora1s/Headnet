@@ -683,7 +683,7 @@ paths:
         produces an identical `401`. Distinguishing them would tell whoever is
         holding a rejected key whether it ever existed.
 
-        Redemption and device creation are one transaction, so a rejected
+        Redemption, device creation and credential issuance are one transaction, so a rejected
         device does not spend a single-use key.
       operationId: enrollDevice
       security: []
@@ -694,10 +694,10 @@ paths:
             schema: { $ref: "#/components/schemas/EnrollDeviceRequest" }
       responses:
         "201":
-          description: The device was enrolled.
+          description: The device was enrolled. Save device_token now; it is never returned again.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/Device" }
+              schema: { $ref: "#/components/schemas/EnrollDeviceResponse" }
         "400":
           description: The name or public key was rejected.
           content:
@@ -719,6 +719,65 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /api/v1/devices/me:
+    get:
+      tags: [Devices]
+      summary: Read the authenticated device
+      operationId: getDeviceMe
+      description: |
+        Requires a device bearer token; browser sessions are not accepted.
+        Returns only this device, with no credential. Responses use no-store.
+      security: [{ deviceBearer: [] }]
+      responses:
+        "200":
+          description: The authenticated device.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Device" }
+        "401": { $ref: "#/components/responses/DeviceUnauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /api/v1/devices/me/heartbeat:
+    post:
+      tags: [Devices]
+      summary: Record authenticated control-plane contact
+      operationId: deviceHeartbeat
+      description: |
+        Send an empty body. Records the server receipt time as last_seen_at;
+        this does not attest that a VPN tunnel exists or carries traffic.
+        Uses explicit bearer authentication, so no CSRF token is required.
+        Revocation is checked in the write, including concurrent revocation.
+      security: [{ deviceBearer: [] }]
+      responses:
+        "204": { description: The check-in was recorded. }
+        "400":
+          description: The request body was not empty.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401": { $ref: "#/components/responses/DeviceUnauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /api/v1/network/config:
+    get:
+      tags: [Devices]
+      summary: Read this device's allocated network configuration
+      operationId: getDeviceNetworkConfig
+      description: |
+        Returns only this device's allocated addresses and the deployment ID.
+        Peers are always empty until Phase 3. DNS is disabled with no resolvers
+        until Phase 7. This is not a working tunnel configuration and must not
+        be interpreted as a connected state. Responses use no-store.
+      security: [{ deviceBearer: [] }]
+      responses:
+        "200":
+          description: The authenticated device's configuration.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeviceNetworkConfig" }
+        "401": { $ref: "#/components/responses/DeviceUnauthorized" }
         "429": { $ref: "#/components/responses/RateLimited" }
 
   /api/v1/setup-keys:
@@ -810,6 +869,15 @@ paths:
 
 components:
   securitySchemes:
+    deviceBearer:
+      type: http
+      scheme: bearer
+      description: |
+        Opaque device token returned once at setup-key enrolment. Only its hash
+        is stored. Revoking the device removes its credential atomically.
+        Does not grant user or administrative API access. No expiry or rotation
+        is implemented yet; loss requires revocation and enrolment with a new
+        WireGuard key pair. Query parameters and cookies are not accepted.
     sessionCookie:
       type: apiKey
       in: cookie
@@ -826,6 +894,15 @@ components:
         header. See the Authentication tag.
 
   responses:
+    DeviceUnauthorized:
+      description: Missing, malformed, unknown or revoked device bearer token.
+      headers:
+        WWW-Authenticate:
+          schema: { type: string }
+          description: Bearer challenge for the headnet-device realm.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
     RateLimited:
       description: |
         The client exceeded its request budget. `Retry-After` gives the number
@@ -1139,6 +1216,52 @@ components:
         public_key: { type: string }
         os: { type: string, maxLength: 128 }
         hostname: { type: string, maxLength: 128 }
+
+    EnrollDeviceResponse:
+      allOf:
+        - $ref: "#/components/schemas/Device"
+        - type: object
+          required: [device_token, instance_id]
+          properties:
+            device_token:
+              type: string
+              description: One-time device bearer credential. Store locally as a secret.
+            instance_id:
+              type: string
+              description: Pin this deployment ID locally and refuse unexpected changes.
+
+    DeviceNetworkConfig:
+      type: object
+      required: [instance_id, device_id, addresses, dns, peers]
+      properties:
+        instance_id: { type: string }
+        device_id: { type: string }
+        addresses:
+          type: array
+          description: Own allocated host addresses, IPv4 first, without CIDR suffixes.
+          items: { type: string }
+        dns:
+          type: object
+          required: [enabled, servers]
+          properties:
+            enabled: { type: boolean, enum: [false] }
+            servers:
+              type: array
+              maxItems: 0
+              items: { type: string }
+          description: DNS is unimplemented until Phase 7; no resolver is advertised.
+        peers:
+          type: array
+          maxItems: 0
+          description: Always empty until Phase 3 implements peer distribution.
+          items:
+            type: object
+            required: [public_key, addresses]
+            properties:
+              public_key: { type: string }
+              addresses:
+                type: array
+                items: { type: string }
 
     SetupKey:
       type: object

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/CauaMora1s/Headnet/internal/auth"
 	"github.com/CauaMora1s/Headnet/internal/storage"
 	"github.com/CauaMora1s/Headnet/packages/shared"
 )
@@ -160,7 +161,7 @@ func (s *Store) Register(ctx context.Context, userID string, in NewDevice, now t
 	if userID == "" {
 		return nil, errors.New("devices: an owning user is required")
 	}
-	return s.create(ctx, userID, in, "", now)
+	return s.create(ctx, userID, in, "", "", now)
 }
 
 // Enroll redeems a setup key and registers the device it authorises.
@@ -168,20 +169,30 @@ func (s *Store) Register(ctx context.Context, userID string, in NewDevice, now t
 // The key is consumed and the device created in one transaction. If device
 // creation fails — a duplicate public key, say — the redemption is rolled back
 // with it, so a failed enrolment does not silently spend a single-use key.
-func (s *Store) Enroll(ctx context.Context, token string, in NewDevice, now time.Time) (*Device, error) {
+// The returned device token is shown once; only its hash is persisted.
+func (s *Store) Enroll(ctx context.Context, token string, in NewDevice, now time.Time) (*Device, string, error) {
 	key, err := s.SetupKeyByToken(ctx, nil, token)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	if reason := key.Redeemable(now); reason != nil {
-		return nil, reason
+		return nil, "", reason
 	}
-	return s.create(ctx, key.CreatedBy, in, key.ID, now)
+	secret, err := auth.NewToken(32)
+	if err != nil {
+		return nil, "", err
+	}
+	secret = deviceTokenPrefix + secret
+	device, err := s.create(ctx, key.CreatedBy, in, key.ID, auth.HashToken(secret), now)
+	if err != nil {
+		return nil, "", err
+	}
+	return device, secret, nil
 }
 
 // create is the shared body of Register and Enroll.
 func (s *Store) create(
-	ctx context.Context, userID string, in NewDevice, setupKeyID string, now time.Time,
+	ctx context.Context, userID string, in NewDevice, setupKeyID, tokenHash string, now time.Time,
 ) (*Device, error) {
 	name := truncate(strings.TrimSpace(in.Name), maxNameLength)
 	if name == "" {
@@ -236,6 +247,13 @@ func (s *Store) create(
 				return fmt.Errorf("%w: %s", ErrPublicKeyTaken, publicKey)
 			}
 			return fmt.Errorf("creating the device: %w", err)
+		}
+		if tokenHash != "" {
+			if _, err := tx.ExecContext(ctx, s.db.Rebind(`
+				INSERT INTO device_tokens (device_id, token_hash, created_at) VALUES (?, ?, ?)`),
+				device.ID, tokenHash, now); err != nil {
+				return fmt.Errorf("creating the device credential: %w", err)
+			}
 		}
 		return nil
 	})
@@ -332,6 +350,10 @@ func (s *Store) Revoke(ctx context.Context, id string, scope Scope, now time.Tim
 		if affected, err := result.RowsAffected(); err == nil && affected == 0 {
 			// Another request revoked it between the read and the update.
 			return ErrDeviceRevoked
+		}
+		if _, err := tx.ExecContext(ctx, s.db.Rebind(
+			`DELETE FROM device_tokens WHERE device_id = ?`), device.ID); err != nil {
+			return fmt.Errorf("revoking the device credential: %w", err)
 		}
 		return nil
 	})

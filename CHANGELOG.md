@@ -27,6 +27,22 @@ No release has been tagged yet. Everything below is on `main`.
 
 ### Added
 
+**Device authentication**
+
+- **Security** — setup-key enrolment issues a device bearer token exactly once;
+  only its SHA-256 hash is stored. Issuance and revocation are transactional
+  with device membership and address allocation on SQLite and PostgreSQL.
+- Device-only `GET /api/v1/devices/me`, empty-body
+  `POST /api/v1/devices/me/heartbeat`, and `GET /api/v1/network/config`.
+  Browser sessions grant no access to these routes, and device tokens grant
+  no administrative rights. Heartbeat rechecks revocation in its write.
+- Enrolment and network configuration include the deployment ID for future
+  client pinning. Configuration reports DNS disabled and peers empty; these
+  endpoints do not establish or attest a VPN tunnel.
+- Migration 0007 creates `device_tokens`. Existing inventory records receive
+  no credential automatically. Lost tokens require revocation and enrolment
+  with a new WireGuard key pair; expiry and rotation are not implemented yet.
+
 **Device keys**
 
 - Curve25519 key generation on the device, from the platform CSPRNG and

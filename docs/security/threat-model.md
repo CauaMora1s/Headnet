@@ -98,6 +98,35 @@ list is a component whose compromise causes real harm.
 
 ## 4. Threats and responses
 
+### Device bearer credentials (implemented, Phase 2 foundation)
+
+Setup-key enrolment issues an opaque device token and stores only its SHA-256
+hash. It is separate from the WireGuard private key and authorizes only the
+device's self record, control-plane heartbeat and own network configuration.
+The enrolment transaction includes the device, address allocation, setup-key
+consumption and token hash; a failure leaves none partially issued.
+
+A stolen token permits impersonating that device to these API routes until
+revocation. It does not grant administrative access or decrypt VPN traffic.
+Tokens have no expiry or rotation yet. Revocation deletes the token in the
+same transaction that marks the device revoked and releases its addresses.
+Every authenticated request checks the database; heartbeat also checks in its
+write. A read already authenticated before revocation may finish, but requests
+authenticated after the revocation commits fail. There is no claim of tunnel
+revocation yet, because peer distribution and tunnels are not implemented.
+
+Tokens are returned once, with no-store caching policy. Device routes reject
+cookies and query-string credentials, so ambient browser sessions cannot
+authorize heartbeat writes. User routes continue to require sessions and CSRF
+where applicable. Database hashes cannot be used directly as bearer tokens.
+The normal request limiter applies; request logging must never include an
+Authorization header or credential-bearing request/response body.
+
+The enrolment and authenticated network responses expose the deployment ID for
+future client pinning. It remains absent from public health/version probes.
+Client secure persistence and pinning enforcement require the daemon work;
+publishing the ID alone does not implement that protection.
+
 Each entry gives the threat, the mitigation, and — honestly — whether that
 mitigation exists yet.
 

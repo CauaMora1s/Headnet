@@ -339,7 +339,7 @@ func TestEnrolWithASetupKey(t *testing.T) {
 	f := newFixture(t)
 	issued := f.createKey(t, devices.NewSetupKey{Description: "build agents"})
 
-	device, err := f.store.Enroll(t.Context(), issued.Token, devices.NewDevice{
+	device, _, err := f.store.Enroll(t.Context(), issued.Token, devices.NewDevice{
 		Name: "agent-1", PublicKey: publicKey(t), OS: "linux",
 	}, time.Now().UTC())
 	if err != nil {
@@ -371,12 +371,12 @@ func TestASingleUseKeyWorksExactlyOnce(t *testing.T) {
 	issued := f.createKey(t, devices.NewSetupKey{MaxUses: 1})
 	now := time.Now().UTC()
 
-	if _, err := f.store.Enroll(t.Context(), issued.Token,
+	if _, _, err := f.store.Enroll(t.Context(), issued.Token,
 		devices.NewDevice{Name: "first", PublicKey: publicKey(t)}, now); err != nil {
 		t.Fatalf("the first enrolment failed: %v", err)
 	}
 
-	_, err := f.store.Enroll(t.Context(), issued.Token,
+	_, _, err := f.store.Enroll(t.Context(), issued.Token,
 		devices.NewDevice{Name: "second", PublicKey: publicKey(t)}, now)
 	if !errors.Is(err, devices.ErrKeyExhausted) {
 		t.Fatalf("error = %v, want ErrKeyExhausted", err)
@@ -389,7 +389,7 @@ func TestAnUnlimitedKeyKeepsWorking(t *testing.T) {
 	now := time.Now().UTC()
 
 	for i := range 5 {
-		if _, err := f.store.Enroll(t.Context(), issued.Token,
+		if _, _, err := f.store.Enroll(t.Context(), issued.Token,
 			devices.NewDevice{Name: "agent-" + strconv.Itoa(i), PublicKey: publicKey(t)}, now); err != nil {
 			t.Fatalf("enrolment %d failed: %v", i, err)
 		}
@@ -413,7 +413,7 @@ func TestConcurrentRedemptionOfASingleUseKey(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_, errs[i] = f.store.Enroll(t.Context(), issued.Token, devices.NewDevice{
+			_, _, errs[i] = f.store.Enroll(t.Context(), issued.Token, devices.NewDevice{
 				Name: "agent-" + strconv.Itoa(i), PublicKey: publicKey(t),
 			}, time.Now().UTC())
 		}()
@@ -467,7 +467,7 @@ func TestEnrolIsRefusedForAnUnusableKey(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := f.store.Enroll(t.Context(), tt.token,
+			_, _, err := f.store.Enroll(t.Context(), tt.token,
 				devices.NewDevice{Name: "agent", PublicKey: publicKey(t)}, tt.when)
 			if !errors.Is(err, tt.want) {
 				t.Fatalf("error = %v, want %v", err, tt.want)
@@ -492,7 +492,7 @@ func TestAFailedEnrolmentDoesNotSpendTheKey(t *testing.T) {
 		t.Fatalf("seeding failed: %v", err)
 	}
 
-	if _, err := f.store.Enroll(t.Context(), issued.Token,
+	if _, _, err := f.store.Enroll(t.Context(), issued.Token,
 		devices.NewDevice{Name: "doomed", PublicKey: key}, now); err == nil {
 		t.Fatal("enrolment with a duplicate key succeeded")
 	}
@@ -506,7 +506,7 @@ func TestAFailedEnrolmentDoesNotSpendTheKey(t *testing.T) {
 	}
 
 	// And the key still works for a good device.
-	if _, err := f.store.Enroll(t.Context(), issued.Token,
+	if _, _, err := f.store.Enroll(t.Context(), issued.Token,
 		devices.NewDevice{Name: "good", PublicKey: publicKey(t)}, now); err != nil {
 		t.Fatalf("the key stopped working after a failed enrolment: %v", err)
 	}
@@ -594,7 +594,7 @@ func TestDeletingASetupKeyKeepsItsDevices(t *testing.T) {
 	f := newFixture(t)
 	issued := f.createKey(t, devices.NewSetupKey{})
 
-	device, err := f.store.Enroll(t.Context(), issued.Token,
+	device, _, err := f.store.Enroll(t.Context(), issued.Token,
 		devices.NewDevice{Name: "agent", PublicKey: publicKey(t)}, time.Now().UTC())
 	if err != nil {
 		t.Fatalf("Enroll failed: %v", err)

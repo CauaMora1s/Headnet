@@ -54,6 +54,37 @@ type EnrollDeviceRequest struct {
 	Hostname  string `json:"hostname,omitempty"`
 }
 
+// EnrollDeviceResponse preserves the device fields and adds a one-time bearer
+// credential. Store it locally as a secret; subsequent reads never return it.
+type EnrollDeviceResponse struct {
+	Device
+	DeviceToken string `json:"device_token"`
+	// InstanceID lets the client pin the deployment identity at enrolment.
+	InstanceID string `json:"instance_id"`
+}
+
+// DeviceNetworkConfig describes allocated inventory, not a functioning tunnel.
+type DeviceNetworkConfig struct {
+	InstanceID string          `json:"instance_id"`
+	DeviceID   string          `json:"device_id"`
+	Addresses  []string        `json:"addresses"`
+	DNS        DeviceDNSConfig `json:"dns"`
+	// Peers is always empty until Phase 3 implements peer distribution.
+	Peers []NetworkPeer `json:"peers"`
+}
+
+// DeviceDNSConfig explicitly reports DNS as disabled until Phase 7.
+type DeviceDNSConfig struct {
+	Enabled bool     `json:"enabled"`
+	Servers []string `json:"servers"`
+}
+
+// NetworkPeer reserves the public-only peer shape; no peers are distributed yet.
+type NetworkPeer struct {
+	PublicKey string   `json:"public_key"`
+	Addresses []string `json:"addresses"`
+}
+
 // DeviceList is the body of GET /api/v1/devices.
 type DeviceList struct {
 	Devices []Device `json:"devices"`

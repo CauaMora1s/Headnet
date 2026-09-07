@@ -101,7 +101,7 @@ func (s *Server) handleEnrollDevice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	device, err := s.devices.Enroll(r.Context(), req.SetupKey, devices.NewDevice{
+	device, token, err := s.devices.Enroll(r.Context(), req.SetupKey, devices.NewDevice{
 		Name:      req.Name,
 		PublicKey: req.PublicKey,
 		OS:        req.OS,
@@ -125,7 +125,10 @@ func (s *Server) handleEnrollDevice(w http.ResponseWriter, r *http.Request) {
 		"device_id", device.ID, "user_id", device.UserID,
 		"setup_key_id", device.EnrolledWith, "remote_ip", httpapi.ClientIP(r))
 
-	httpapi.WriteJSON(w, r, http.StatusCreated, deviceResponse(device))
+	w.Header().Set("Cache-Control", "no-store")
+	httpapi.WriteJSON(w, r, http.StatusCreated, api.EnrollDeviceResponse{
+		Device: deviceResponse(device), DeviceToken: token, InstanceID: s.instanceID,
+	})
 }
 
 // handleRevokeDevice removes a device from the network.
