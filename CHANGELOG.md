@@ -64,6 +64,17 @@ No release has been tagged yet. Everything below is on `main`.
 - A key is never silently replaced. A corrupt or insecure key file is
   reported, not overwritten — overwriting would re-enrol the machine under a
   new identity and destroy the evidence of whatever caused it.
+- **Security** — the key file is validated through the open handle rather than
+  by path, so the object checked is the object read, and the directory holding
+  it is checked too: a directory others can write to lets them rename the key
+  away and leave one they chose, whatever the file's own permissions say.
+  Symlinks and reparse points at the key path are refused, as is anything that
+  is not a regular file.
+- **Security** — on Windows the file's *owner* is checked as well as its DACL,
+  because an owner can rewrite permissions at will, and ACL entries whose
+  layout this code cannot parse are refused rather than assumed to deny access.
+  An earlier version skipped every entry that was not a plain allow entry,
+  which waved through object and compound allow entries unread.
 
 **Devices**
 

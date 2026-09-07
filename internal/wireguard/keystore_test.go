@@ -49,16 +49,18 @@ func TestCreateWritesAKeyThatOnlyTheOwnerCanRead(t *testing.T) {
 	// The check that matters, and the one that runs on every load in
 	// production. Its platform-specific half lives in keystore_unix.go and
 	// keystore_windows.go.
-	if err := verifyKeyFilePermissions(store.Path()); err != nil {
+	f, err := openKeyFile(store.Path())
+	if err != nil {
 		t.Fatalf("the key file this package just wrote fails its own "+
 			"permission check: %v", err)
 	}
+	f.Close()
 
 	loaded, err := store.Load()
 	if err != nil {
 		t.Fatalf("Load() failed on a key Create() wrote: %v", err)
 	}
-	if loaded != key {
+	if !loaded.Equal(key) {
 		t.Fatal("Load() returned a different key than Create() produced")
 	}
 }
@@ -94,7 +96,7 @@ func TestTheKeyFileIsInterchangeableWithWireGuardTooling(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the key file does not parse as a WireGuard key: %v", err)
 	}
-	if parsed != key {
+	if !parsed.Equal(key) {
 		t.Fatal("the key on disk is not the key Create() returned")
 	}
 }
@@ -120,7 +122,7 @@ func TestCreateRefusesToOverwriteAnExistingKey(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load() failed after the refused overwrite: %v", err)
 	}
-	if after != first {
+	if !after.Equal(first) {
 		t.Fatal("the refused Create() changed the key on disk anyway")
 	}
 }
@@ -149,7 +151,7 @@ func TestLoadOrCreateKeepsTheSameIdentityAcrossRestarts(t *testing.T) {
 			t.Fatalf("restart %d generated a new key, which would silently "+
 				"re-enrol the machine under a new identity", i)
 		}
-		if again != first {
+		if !again.Equal(first) {
 			t.Fatalf("restart %d loaded a different key", i)
 		}
 	}

@@ -3,6 +3,7 @@ package wireguard
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -11,6 +12,14 @@ import (
 
 // KeyFileName is the file a device's private key lives in.
 const KeyFileName = "device.key"
+
+// maxKeyFileBytes caps how much of the key file is read.
+//
+// A key file is 45 bytes: 44 of base64 and a newline. The cap is generous
+// enough to tolerate a stray carriage return or trailing whitespace, and small
+// enough that a device node or an enormous file substituted for the key is
+// rejected by shape rather than consumed.
+const maxKeyFileBytes = 128
 
 // Key store errors.
 var (
@@ -95,21 +104,29 @@ func DefaultStateDir() string {
 // that case rather than continuing, because a key others can read is a key
 // others may already have.
 func (s *Store) Load() (PrivateKey, error) {
-	if err := verifyKeyFilePermissions(s.path); err != nil {
+	f, err := openKeyFile(s.path)
+	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return PrivateKey{}, fmt.Errorf("%w: %s does not exist", ErrNoKey, s.path)
 		}
 		return PrivateKey{}, err
 	}
+	defer f.Close()
 
-	raw, err := os.ReadFile(s.path)
+	// The limit is not about memory. It means a device node or a very large
+	// file substituted for the key is refused by shape rather than read in
+	// full, and a key file is 45 bytes.
+	raw, err := io.ReadAll(io.LimitReader(f, maxKeyFileBytes+1))
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return PrivateKey{}, fmt.Errorf("%w: %s does not exist", ErrNoKey, s.path)
-		}
 		return PrivateKey{}, fmt.Errorf("read device key %s: %w", s.path, err)
 	}
 	defer zero(raw)
+
+	if len(raw) > maxKeyFileBytes {
+		return PrivateKey{}, fmt.Errorf(
+			"device key %s is unusable: it is larger than %d bytes, so it is not a key file",
+			s.path, maxKeyFileBytes)
+	}
 
 	key, err := ParsePrivateKey(strings.TrimSpace(string(raw)))
 	if err != nil {
@@ -212,11 +229,15 @@ func (s *Store) save(key PrivateKey) error {
 		_ = os.Remove(s.path)
 		return err
 	}
-	if err := verifyKeyFilePermissions(s.path); err != nil {
+	// Verified through the same path Load uses, rather than through a separate
+	// check that could drift away from it. If the key cannot be read back
+	// safely, it must not be left on disk claiming to be usable.
+	check, err := openKeyFile(s.path)
+	if err != nil {
 		_ = os.Remove(s.path)
 		return fmt.Errorf("device key %s was written but could not be protected: %w", s.path, err)
 	}
-	return nil
+	return check.Close()
 }
 
 // zero overwrites a buffer that held key material.

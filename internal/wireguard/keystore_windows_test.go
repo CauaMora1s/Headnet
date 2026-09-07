@@ -89,7 +89,7 @@ func TestLoadRefusesAKeyFileEveryAccountCanRead(t *testing.T) {
 	if !errors.Is(err, ErrInsecureKeyFile) {
 		t.Fatalf("Load() on a world-readable key file error = %v, want ErrInsecureKeyFile", err)
 	}
-	if loaded != (PrivateKey{}) {
+	if !loaded.IsZero() {
 		t.Error("Load() returned key material alongside the refusal")
 	}
 	if !strings.Contains(err.Error(), store.Path()) {

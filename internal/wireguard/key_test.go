@@ -26,17 +26,19 @@ func TestGeneratedKeysAreUnique(t *testing.T) {
 	t.Parallel()
 
 	const count = 2048
-	seen := make(map[PrivateKey]struct{}, count)
+	// Keyed on the derived public key: it is unique per private key, and a map
+	// of secrets is a thing not to build even in a test.
+	seen := make(map[PublicKey]struct{}, count)
 	for i := range count {
 		key, err := GenerateKey()
 		if err != nil {
 			t.Fatalf("GenerateKey() failed on iteration %d: %v", i, err)
 		}
-		if _, duplicate := seen[key]; duplicate {
+		if _, duplicate := seen[key.Public()]; duplicate {
 			t.Fatalf("GenerateKey() returned a duplicate key after %d draws, "+
 				"which means it is not drawing from the CSPRNG", i)
 		}
-		seen[key] = struct{}{}
+		seen[key.Public()] = struct{}{}
 	}
 }
 
@@ -52,8 +54,7 @@ func TestGeneratedKeysAreClampedForX25519(t *testing.T) {
 			t.Fatalf("GenerateKey() failed: %v", err)
 		}
 		if !clamped(key) {
-			t.Fatalf("key %d is not clamped: low bits %#x, high byte %#x",
-				i, key[0]&7, key[31])
+			t.Fatalf("key %d is not clamped", i)
 		}
 	}
 }
@@ -79,17 +80,19 @@ func TestPublicKeyMatchesTheRFC7748TestVector(t *testing.T) {
 	if err != nil {
 		t.Fatalf("decoding the test vector failed: %v", err)
 	}
-	var key PrivateKey
-	copy(key[:], raw)
-	key.clamp()
+	scalar := new([KeyLength]byte)
+	copy(scalar[:], raw)
+	clamp(scalar)
+	key := newPrivateKey(scalar)
 
 	if got := key.Public().String(); got != alicePublic {
 		t.Fatalf("Public() = %q, want the RFC 7748 vector %q", got, alicePublic)
 	}
 
 	// The same key, unclamped, must be refused rather than silently corrected.
-	var unclampedKey PrivateKey
-	copy(unclampedKey[:], raw)
+	unclampedScalar := new([KeyLength]byte)
+	copy(unclampedScalar[:], raw)
+	unclampedKey := newPrivateKey(unclampedScalar)
 	if _, err := ParsePrivateKey(privateKeyBase64(unclampedKey)); err == nil {
 		t.Fatal("ParsePrivateKey accepted an unclamped key, which would derive " +
 			"a different public key than the one the device enrolled with")
@@ -216,6 +219,62 @@ func TestThePrivateKeyCannotBeSerialised(t *testing.T) {
 		}
 	})
 
+	t.Run("an unexported field does not leak it", func(t *testing.T) {
+		// This was found in review, with a reproduction, and it was
+		// the most important of the four findings: the claim above this test
+		// was simply false for the old representation.
+		//
+		// fmt renders unexported struct fields through reflection and cannot
+		// call methods on them, because reflect will not hand out an interface
+		// for an unexported field. Format, String and every other escape hatch
+		// is skipped, and fmt prints the underlying value instead. When
+		// PrivateKey was a [32]byte, %v on a struct holding one in an
+		// unexported field printed the raw scalar.
+		//
+		// A daemon keeping its key in an unexported field and logging its own
+		// state is the obvious way to write a daemon, not a contrived case.
+		type daemonState struct {
+			name string
+			key  PrivateKey
+			pub  PublicKey
+		}
+		hidden := daemonState{name: "laptop", key: key, pub: key.Public()}
+
+		// The scalar rendered as decimal and as hex, which is what %v, %d and
+		// %#v would produce respectively.
+		var decimal, hexed strings.Builder
+		for i, b := range keyBytesForTest(key) {
+			if i > 0 {
+				decimal.WriteByte(' ')
+				hexed.WriteString(", ")
+			}
+			fmt.Fprintf(&decimal, "%d", b)
+			fmt.Fprintf(&hexed, "%#x", b)
+		}
+
+		for _, format := range []string{"%v", "%+v", "%#v", "%s", "%d", "%q"} {
+			rendered := fmt.Sprintf(format, hidden)
+			for _, leak := range []struct{ what, value string }{
+				{"base64", secret},
+				{"decimal bytes", decimal.String()},
+				{"hex bytes", hexed.String()},
+			} {
+				if strings.Contains(rendered, leak.value) {
+					t.Errorf("fmt.Sprintf(%q, ...) leaked the key as %s through an "+
+						"unexported field: %s", format, leak.what, rendered)
+				}
+			}
+		}
+
+		// And through slog, which is how it would actually reach a log file.
+		var buf bytes.Buffer
+		slog.New(slog.NewJSONHandler(&buf, nil)).Info("daemon state", "state", hidden)
+		if strings.Contains(buf.String(), secret) ||
+			strings.Contains(buf.String(), decimal.String()) {
+			t.Errorf("slog wrote the key held in an unexported field: %s", buf.String())
+		}
+	})
+
 	t.Run("the public key still renders, because it must", func(t *testing.T) {
 		// Suppressing the public key too would be the easy way to pass every
 		// assertion above and would break enrolment, which has to send it.
@@ -285,7 +344,7 @@ func TestPrivateKeyRoundTripsThroughItsTextForm(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParsePrivateKey() rejected a key this package generated: %v", err)
 	}
-	if parsed != key {
+	if !parsed.Equal(key) {
 		t.Fatal("the key did not survive a round trip through its text form")
 	}
 	if !parsed.Public().Equal(key.Public()) {
@@ -347,4 +406,16 @@ func TestPublicKeyAcceptsAllZeroes(t *testing.T) {
 	if !key.IsZero() {
 		t.Fatal("IsZero() did not recognise an all-zero public key")
 	}
+}
+
+// keyBytesForTest exposes the raw scalar so the leak assertions can look for
+// it. It exists only in tests, which is the point: there is no exported way to
+// get these bytes back out, and privateKeyBase64 is unexported for the same
+// reason.
+func keyBytesForTest(k PrivateKey) [KeyLength]byte {
+	scalar := k.bytes()
+	if scalar == nil {
+		return [KeyLength]byte{}
+	}
+	return *scalar
 }

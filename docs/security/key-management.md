@@ -97,24 +97,57 @@ table said "SYSTEM and Administrators" and the code does something narrower:
   to start because they appear would be a false alarm rather than protection.
   Any other principal is refused.
 
-Two rules the implementation holds to, and the tests that hold it there:
+Two rules the implementation holds to, and the tests that hold it there.
 
-- **Permissions are verified on read, not just set on write.** A key file that
-  has become readable by others is a compromised key, and the daemon refuses to
-  use it. This is not hypothetical hygiene — the realistic causes are a
-  restored backup, a careless `chmod -R`, or an `rsync` without `-p`, all of
-  which happen long after the file was correctly created.
-  `TestLoadRefusesAKeyFileOtherAccountsCanRead` covers Unix modes;
-  `TestLoadRefusesAKeyFileEveryAccountCanRead` widens a real Windows DACL and
-  asserts the refusal, so the Windows check is demonstrably not a stub.
-- **The key never enters a log, a diagnostic bundle or an error message.**
-  `wireguard.PrivateKey` refuses to render or marshal by every route: `String`,
-  `GoString`, `Format`, `MarshalText`, `MarshalJSON` and `MarshalBinary`. The
-  `fmt.Formatter` implementation exists because a test found that `%d` printed
-  the raw scalar as 32 decimal numbers — `fmt` consults `Stringer` only for the
-  string-shaped verbs. Marshalling returns an **error** rather than a redacted
-  placeholder, so a struct that contains a key fails to encode instead of
-  encoding with a field that silently did nothing.
+**1. What is checked is what is read, and the directory counts.**
+
+Permissions are verified on every read, not merely set once on write. A key
+file that has become readable by others is a compromised key, and the daemon
+refuses to use it. This is not hypothetical hygiene: the realistic causes are a
+restored backup, a careless `chmod -R`, or an `rsync` without `-p`, all of
+which happen long after the file was correctly created.
+
+Every check is made against the **open file handle**, not the path. Validating
+a path and then reopening it means the object that was checked need not be the
+object that was read.
+
+| Refused | Why |
+| --- | --- |
+| A directory others can write to | They can rename the key away and leave one they chose; the file's own permissions say nothing about this |
+| A symlink, junction or reparse point at the key path | Its contents are chosen by whoever controls the target |
+| A file that is not a regular file | A fifo makes the read's contents and timing the attacker's, and blocks the daemon's start |
+| A file owned by an untrusted account (both platforms) | An owner can rewrite permissions at will, so a restrictive ACL on someone else's file is a promise they can withdraw |
+| A Windows ACL entry this check cannot parse | Object and compound entries put other fields where the SID belongs, so they are refused rather than assumed to deny |
+| A file larger than 128 bytes | A key file is 45 bytes; anything else is not one |
+
+The Windows checks are demonstrably not stubs:
+`TestLoadRefusesAKeyFileEveryAccountCanRead` widens a real DACL and asserts the
+refusal, and `TestTheKeyFileDACLIsProtectedFromInheritance` asserts the DACL
+has exactly one entry — which is what catches setting a DACL without
+`PROTECTED_DACL_SECURITY_INFORMATION` and thereby *adding* to the inherited
+entries instead of replacing them.
+
+**2. The key never enters a log, a diagnostic bundle or an error message.**
+
+`wireguard.PrivateKey` refuses to render or marshal by every route: `String`,
+`GoString`, `Format`, `MarshalText`, `MarshalJSON` and `MarshalBinary`.
+Marshalling returns an **error** rather than a redacted placeholder, so a
+struct containing a key fails to encode instead of encoding with a field that
+silently did nothing.
+
+The scalar is held by a **closure** rather than stored in a field, and that is
+not a stylistic choice. `fmt` renders unexported struct fields through
+reflection and cannot call methods on them, so `Format` and `String` are
+skipped entirely and the underlying value is printed. A daemon holding its key
+in an unexported field and logging its own state is the obvious way to write a
+daemon, so this path matters. A pointer to the array closes `%v`, `%+v`, `%#v`
+and `%d` and still leaks through `%s` and `%q`, which take `fmt`'s bad-verb
+path and dereference at depth zero. A func value is printed as an address for
+every verb, because what it captures is not reachable through reflection.
+
+Two of these were found by tests written expecting to pass — `%d` bypassing
+`Stringer`, and then `%s` bypassing the pointer fix — which is the argument for
+writing the failure-mode assertion even when you are confident of the answer.
 
 **A key is never silently replaced.** Generating over an existing key would
 take the device off the network with no way back except re-enrolment, and the
@@ -262,6 +295,9 @@ Full procedure: [docs/deployment.md](../deployment.md).
 | Curve25519 key generation, checked against the RFC 7748 vector | **Implemented**, tested |
 | Private keys unreachable by `fmt`, `slog`, JSON, gob or any marshaller | **Implemented**, tested |
 | Key file restricted to the daemon's account, and verified on every read | **Implemented**, tested on Unix and Windows |
+| Key file validated through the open handle, not by path | **Implemented**, tested |
+| Symlinks, reparse points, fifos and writable directories refused | **Implemented**, tested |
+| Windows file owner checked, and unparseable ACL entries failed closed | **Implemented**, tested |
 | Password hashes unreachable by JSON, templates or `fmt` | **Implemented**, tested |
 | Query strings excluded from request logs | **Implemented**, tested |
 | Error responses free of internal detail | **Implemented**, tested |

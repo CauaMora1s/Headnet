@@ -52,9 +52,11 @@ func TestTheKeyFileModeSurvivesAPermissiveUmask(t *testing.T) {
 		t.Fatalf("Create() failed: %v", err)
 	}
 
-	if err := verifyKeyFilePermissions(store.Path()); err != nil {
+	f, err := openKeyFile(store.Path())
+	if err != nil {
 		t.Fatalf("a key written under umask 0 fails its own permission check: %v", err)
 	}
+	f.Close()
 	dir, err := os.Stat(filepath.Dir(store.Path()))
 	if err != nil {
 		t.Fatalf("stat on the directory failed: %v", err)
@@ -99,7 +101,7 @@ func TestLoadRefusesAKeyFileOtherAccountsCanRead(t *testing.T) {
 				t.Fatalf("Load() on a %#o key file error = %v, want ErrInsecureKeyFile",
 					tt.mode, err)
 			}
-			if loaded != (PrivateKey{}) {
+			if !loaded.IsZero() {
 				t.Error("Load() returned key material alongside the refusal")
 			}
 			if !strings.Contains(err.Error(), "chmod 600") {

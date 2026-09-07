@@ -45,15 +45,64 @@ type PublicKey [KeyLength]byte
 // It never leaves the device that generated it. There is no API field, no
 // configuration key and no log call anywhere in Headnet that can carry one,
 // and the methods below keep that true by construction rather than by
-// discipline: String, GoString, MarshalText, MarshalJSON and MarshalBinary
-// all refuse.
+// discipline: String, GoString, Format, MarshalText, MarshalJSON and
+// MarshalBinary all refuse.
 //
-// This matters more than it looks. fmt reaches unexported fields quite
-// happily, so a single logger.Info("...", "device", d) on a struct holding a
-// private key would otherwise write the key to disk in production. Exactly
-// that bug was found in auth.User by a test, which is why this type has the
-// treatment from its first line.
-type PrivateKey [KeyLength]byte
+// # Why the scalar is held by a closure
+//
+// This is the load-bearing part of the design and it looks like an
+// affectation, so it is worth the paragraphs.
+//
+// fmt renders unexported struct fields through reflection, and it cannot call
+// methods on them: reflect refuses to hand out an interface for an unexported
+// field, so Format, String and every other escape hatch is skipped and fmt
+// falls back to printing the underlying value. When PrivateKey was a
+// [32]byte, this printed the raw scalar.
+//
+//	state := struct{ key PrivateKey }{key: k}
+//	fmt.Sprintf("%v", state)   // {[8 16 24 32 0 0 ...]}
+//
+// A daemon holding its key in an unexported field and logging its own state is
+// not a contrived scenario; it is the obvious way to write a daemon. Wrapping
+// the array in a struct does not help, because fmt walks into that too.
+//
+// A *[32]byte field fixes %v, %+v, %#v and %d — and still leaks through %s and
+// %q. Those take fmt's bad-verb path, which prints the type and then re-renders
+// the value at depth zero, and at depth zero fmt dereferences a pointer to an
+// array. So the obvious fix is most of a fix, which is the worst kind.
+//
+// What holds for every verb is a field fmt will not follow at all. A func value
+// always prints as an address: the variables it captures are not reachable
+// through reflection. Hence the closure. A **[32]byte works too, for the same
+// reason and less legibly, and the first reader to meet it would simplify it
+// back to one pointer.
+//
+// The cost is that PrivateKey is no longer comparable with ==, which is why
+// Equal exists. That is a fair price for the difference between a promise and
+// a guarantee.
+//
+// Found in review, with a reproduction. The original claim that the
+// key could not be rendered by any route was simply false.
+type PrivateKey struct {
+	// scalar is nil for the zero value, which reads as "no key". Nothing
+	// mutates the array after construction, so copying a PrivateKey shares it
+	// safely.
+	scalar func() *[KeyLength]byte
+}
+
+// newPrivateKey wraps a scalar so that no field of the returned value contains
+// it. See the type documentation for why that matters.
+func newPrivateKey(scalar *[KeyLength]byte) PrivateKey {
+	return PrivateKey{scalar: func() *[KeyLength]byte { return scalar }}
+}
+
+// bytes returns the scalar, or nil for the zero key.
+func (k PrivateKey) bytes() *[KeyLength]byte {
+	if k.scalar == nil {
+		return nil
+	}
+	return k.scalar()
+}
 
 // GenerateKey returns a new WireGuard private key from the platform CSPRNG.
 //
@@ -61,53 +110,88 @@ type PrivateKey [KeyLength]byte
 // generation — 32 random bytes, clamped for X25519. See
 // docs/architecture/decisions/ADR-0002-use-wireguard.md.
 func GenerateKey() (PrivateKey, error) {
-	var key PrivateKey
-	if _, err := rand.Read(key[:]); err != nil {
+	scalar := new([KeyLength]byte)
+	if _, err := rand.Read(scalar[:]); err != nil {
 		// crypto/rand failing is not a recoverable condition, and returning a
-		// partially filled buffer would be catastrophic. Return a zero key
+		// partially filled buffer would be catastrophic. Return the zero key
 		// with the error so a caller that ignores the error still gets
 		// something IsZero rejects rather than something weak it accepts.
 		return PrivateKey{}, fmt.Errorf("generate WireGuard key: %w", err)
 	}
-	key.clamp()
-	return key, nil
+	clamp(scalar)
+	return newPrivateKey(scalar), nil
 }
 
 // clamp applies the X25519 scalar clamping WireGuard uses: clear the three low
 // bits, clear the top bit, set the second-highest. That forces the scalar into
 // the correct subgroup and to a fixed bit length, which is what makes the
 // scalar multiplication constant-time and free of small-subgroup leakage.
-func (k *PrivateKey) clamp() {
-	k[0] &= 248
-	k[31] &= 127
-	k[31] |= 64
+func clamp(scalar *[KeyLength]byte) {
+	scalar[0] &= 248
+	scalar[31] &= 127
+	scalar[31] |= 64
 }
 
 // clamped reports whether a scalar already satisfies the clamping rules.
 func clamped(k PrivateKey) bool {
-	return k[0]&7 == 0 && k[31]&128 == 0 && k[31]&64 == 64
+	scalar := k.bytes()
+	if scalar == nil {
+		return false
+	}
+	return scalar[0]&7 == 0 && scalar[31]&128 == 0 && scalar[31]&64 == 64
 }
 
 // Public derives the public key. The derivation is one-way: holding the result
 // tells an attacker nothing about the private key.
+//
+// The zero PrivateKey derives the zero PublicKey, which IsZero rejects, rather
+// than panicking. A nil dereference deep inside enrolment would be a much
+// worse way to learn that key generation failed.
 func (k PrivateKey) Public() PublicKey {
 	var pub PublicKey
+	scalar := k.bytes()
+	if scalar == nil {
+		return pub
+	}
 	// ScalarBaseMult is deprecated in favour of X25519 for Diffie-Hellman, but
 	// it is the right call for deriving a public key from a scalar and it
 	// cannot fail, whereas X25519 returns an error this call could never
 	// produce and which a caller would then have to invent handling for.
-	curve25519.ScalarBaseMult((*[KeyLength]byte)(&pub), (*[KeyLength]byte)(&k))
+	curve25519.ScalarBaseMult((*[KeyLength]byte)(&pub), scalar)
 	return pub
 }
 
-// IsZero reports whether the key is entirely zero bytes.
+// IsZero reports whether this is the zero key: either unset, or 32 zero bytes.
 //
-// A zero key is what an uninitialised buffer looks like, and it is not a
-// usable Curve25519 scalar. Treating it as "no key" rather than as a valid one
-// is what stops a failed generation being enrolled as though it had worked.
+// Both mean the same thing to a caller, namely that there is no usable key
+// here. A zero scalar is what an uninitialised buffer looks like and is not a
+// valid Curve25519 scalar, so treating it as "no key" rather than as a valid
+// one is what stops a failed generation being enrolled as though it had
+// worked.
 func (k PrivateKey) IsZero() bool {
-	var zero PrivateKey
-	return subtle.ConstantTimeCompare(k[:], zero[:]) == 1
+	scalar := k.bytes()
+	if scalar == nil {
+		return true
+	}
+	var zero [KeyLength]byte
+	return subtle.ConstantTimeCompare(scalar[:], zero[:]) == 1
+}
+
+// Equal compares two private keys in constant time.
+//
+// It exists because a struct with a func field is not comparable at all, so
+// key1 == key2 does not compile. That is a better outcome than the pointer
+// representation would have given, where == would have compiled and silently
+// compared addresses, reporting two copies of the same key as different.
+//
+// Constant time because this is the one comparison in the package whose inputs
+// are secret.
+func (k PrivateKey) Equal(other PrivateKey) bool {
+	mine, theirs := k.bytes(), other.bytes()
+	if mine == nil || theirs == nil {
+		return mine == nil && theirs == nil
+	}
+	return subtle.ConstantTimeCompare(mine[:], theirs[:]) == 1
 }
 
 // IsZero reports whether the public key is entirely zero bytes.
@@ -168,7 +252,9 @@ func ParsePrivateKey(s string) (PrivateKey, error) {
 	if err != nil {
 		return PrivateKey{}, err
 	}
-	key := PrivateKey(raw)
+	scalar := new([KeyLength]byte)
+	*scalar = raw
+	key := newPrivateKey(scalar)
 	if key.IsZero() {
 		return PrivateKey{}, fmt.Errorf(
 			"%w: it is all zeroes, which means key generation failed", ErrInvalidKey)
@@ -212,7 +298,11 @@ func parseKeyBytes(s string) ([KeyLength]byte, error) {
 // built to prevent — a supported way to turn a private key into a string that
 // can then be logged, sent or embedded in a struct.
 func privateKeyBase64(k PrivateKey) string {
-	return base64.StdEncoding.EncodeToString(k[:])
+	scalar := k.bytes()
+	if scalar == nil {
+		return ""
+	}
+	return base64.StdEncoding.EncodeToString(scalar[:])
 }
 
 // String refuses to render the key.
