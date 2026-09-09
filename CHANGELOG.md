@@ -203,9 +203,19 @@ No release has been tagged yet. Everything below is on `main`.
   dependency, for the same reason the Go side uses the standard library's mux
 - CSRF tokens attached to state-changing requests and not to reads
 - Live control-plane status from real endpoints
+- The two ways a device gets onto the list are shown as different, because they
+  are: enrolling with a setup key mints a credential the machine authenticates
+  with, while registering through the UI records a public key and reserves an
+  address and produces a machine that cannot contact the server at all. Each
+  device carries an **Enrolled** or **Record only** badge, the register form
+  says plainly that it does not make a device connectable, and revoking an
+  enrolled device says its credential is destroyed as well as its address
+  released
 - An explicit list of what has not been built, rather than empty tables. Areas
   whose API works but whose screens do not are marked "API only" — claiming
-  something is missing when it works is the same failure as the reverse
+  something is missing when it works is the same failure as the reverse.
+  Devices and authentication were both still listed as unbuilt after their
+  screens shipped, which is that same failure in the other direction
 - **Not yet served by the server binary.** The UI runs against the dev server or
   behind the same reverse proxy as the API; embedding it is a Phase 2 item
 

@@ -2,9 +2,13 @@
  * The administrative areas the web UI will eventually cover.
  *
  * They are listed with the roadmap phase that will deliver each one, and are
- * rendered as visibly unavailable. Showing an empty "Devices" table would read
- * as "you have no devices" rather than "this has not been built", which is the
- * distinction this whole build is careful about.
+ * rendered as visibly unavailable. Showing an empty table for something that
+ * was never built would read as "you have none of these" rather than "this has
+ * not been built", which is the distinction this whole build is careful about.
+ *
+ * Entries leave this list the moment their screens land. Devices and
+ * authentication were both still listed here after their screens shipped,
+ * which is the same lie told backwards.
  *
  * The same honesty applies in the other direction: once an API exists, saying
  * it does not is just as wrong. `status` distinguishes an area that has not
@@ -21,10 +25,12 @@ export interface PlannedArea {
 
 export const PLANNED_AREAS: readonly PlannedArea[] = [
   {
-    name: 'Devices',
+    name: 'Setup keys',
     phase: 'Phase 1',
-    summary: 'Enrol, inspect and revoke the machines on this network.',
-    status: 'planned',
+    summary:
+      'Keys can be created, listed and revoked over the API. Without a screen ' +
+      'for them, enrolling a device means reaching for curl.',
+    status: 'api-only',
   },
   {
     name: 'Users',
@@ -33,15 +39,17 @@ export const PLANNED_AREAS: readonly PlannedArea[] = [
     status: 'api-only',
   },
   {
-    name: 'Authentication',
-    phase: 'Phase 1',
-    summary: 'Sign-in, sessions and first-run setup work over the API. No UI yet.',
-    status: 'api-only',
+    name: 'Single sign-on and MFA',
+    phase: 'Phase 11',
+    summary: 'Local accounts work today. OIDC and second factors do not exist.',
+    status: 'planned',
   },
   {
     name: 'Peers',
     phase: 'Phase 3',
-    summary: 'Which devices can reach each other, and how each link is carried.',
+    summary:
+      'Which devices can reach each other, and how each link is carried. ' +
+      'Devices existing does not mean they can reach each other: nothing does yet.',
     status: 'planned',
   },
   {

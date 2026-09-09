@@ -1,5 +1,6 @@
 <script lang="ts">
   import { ApiError, type Device } from '../lib/api';
+  import { canAuthenticate, countWithoutCredential } from '../lib/devices';
   import { client, session } from '../lib/session.svelte';
 
   let devices = $state<Device[]>([]);
@@ -76,6 +77,8 @@
   const active = $derived(devices.filter((d) => !d.revoked_at));
   const revoked = $derived(devices.filter((d) => d.revoked_at));
 
+  const inventoryOnly = $derived(countWithoutCredential(devices));
+
   $effect(() => {
     void load();
   });
@@ -93,21 +96,51 @@
     </button>
   </div>
 
-  <!-- Devices exist as records; nothing carries traffic between them yet. A
-       page that looked like a working VPN would be exactly the impression this
-       project refuses to give. -->
+  <!-- Nothing carries traffic between these devices yet. A page that looked
+       like a working VPN would be exactly the impression this project refuses
+       to give. -->
   <p
     class="mb-6 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
   >
-    These are inventory records. Devices listed here have an address reserved for them, but nothing
-    is connected and no traffic is carried &mdash; peer connectivity arrives in Phase 3.
+    <strong>No traffic is carried yet.</strong> Devices here have an address reserved, and an enrolled
+    one can authenticate to this server &mdash; but nothing connects them to each other. Peer connectivity
+    arrives in Phase 3.
   </p>
+
+  {#if inventoryOnly > 0}
+    <p
+      class="mb-6 rounded-lg border border-slate-300 bg-slate-50 p-3 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+    >
+      {inventoryOnly}
+      {inventoryOnly === 1 ? 'device is' : 'devices are'} recorded here without a credential, so
+      {inventoryOnly === 1 ? 'it cannot' : 'they cannot'} contact this server even once Phase 3 lands.
+      Enrol with a setup key to give a machine one.
+    </p>
+  {/if}
 
   {#if showRegister}
     <form
       onsubmit={register}
       class="mb-8 space-y-4 rounded-lg border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900"
     >
+      <!-- The most important text on this page. Without it the form looks like
+           the way to put a machine on the network, and it is not. -->
+      <div
+        class="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-950"
+      >
+        <p class="font-medium">This records a device. It does not let it connect.</p>
+        <p class="mt-1 text-slate-600 dark:text-slate-400">
+          The machine gets an address reserved and its public key on file, but no credential, so it
+          cannot contact this server. Use this to reserve an address, or to note a device you will
+          enrol properly later.
+        </p>
+        <p class="mt-2 text-slate-600 dark:text-slate-400">
+          A machine that will actually join the network <strong>enrols itself</strong> with a setup key
+          and receives its credential then. Setup keys are created over the API today; their screens are
+          still to come.
+        </p>
+      </div>
+
       <div>
         <label for="name" class="block text-sm font-medium">Name</label>
         <input
@@ -132,9 +165,11 @@
           class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-sm dark:border-slate-700 dark:bg-slate-950"
         />
         <p id="key-help" class="mt-1 text-xs text-slate-500 dark:text-slate-400">
-          The device's <strong>public</strong> key. Its private key is generated on the device and must
-          never leave it &mdash; there is nowhere here to put one, deliberately. Generating keys is the
-          client daemon's job, arriving in Phase 2.
+          The device's <strong>public</strong> key. Its private key is generated on the device and
+          must never leave it &mdash; there is nowhere here to put one, deliberately. The server
+          knows how to generate and store a key locally, but no client daemon exposes it yet, so for
+          now this comes from
+          <code class="font-mono text-[0.7rem]">wg genkey | wg pubkey</code>.
         </p>
       </div>
 
@@ -175,7 +210,8 @@
     >
       <p class="font-medium">No devices yet</p>
       <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">
-        Add one above, or create a setup key over the API to enrol a headless machine.
+        Create a setup key over the API and let the machine enrol itself &mdash; that is the path
+        that produces a device able to connect. Adding one above records it without a credential.
       </p>
     </div>
   {:else}
@@ -187,6 +223,7 @@
           <tr>
             <th scope="col" class="py-2 pr-4 font-medium">Name</th>
             <th scope="col" class="py-2 pr-4 font-medium">Address</th>
+            <th scope="col" class="py-2 pr-4 font-medium">Credential</th>
             <th scope="col" class="py-2 pr-4 font-medium">OS</th>
             {#if session.isAdmin}
               <th scope="col" class="py-2 pr-4 font-medium">Owner</th>
@@ -200,6 +237,24 @@
             <tr class="border-b border-slate-100 dark:border-slate-800/60">
               <td class="py-3 pr-4 font-medium">{device.name}</td>
               <td class="py-3 pr-4 font-mono text-xs">{device.ipv4 ?? '—'}</td>
+              <td class="py-3 pr-4">
+                <!-- The label carries the meaning, not the colour. -->
+                {#if canAuthenticate(device)}
+                  <span
+                    class="inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200"
+                    title="Enrolled with a setup key, so this device holds a credential and can authenticate."
+                  >
+                    Enrolled
+                  </span>
+                {:else}
+                  <span
+                    class="inline-flex items-center rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                    title="Registered without a setup key, so this device has no credential and cannot contact the server."
+                  >
+                    Record only
+                  </span>
+                {/if}
+              </td>
               <td class="py-3 pr-4 text-slate-600 dark:text-slate-400">{device.os || '—'}</td>
               {#if session.isAdmin}
                 <td class="py-3 pr-4 font-mono text-xs text-slate-500">{device.user_id}</td>
@@ -223,6 +278,7 @@
             <tr class="border-b border-slate-100 opacity-50 dark:border-slate-800/60">
               <td class="py-3 pr-4 font-medium line-through">{device.name}</td>
               <td class="py-3 pr-4 text-xs">address released</td>
+              <td class="py-3 pr-4 text-xs">credential deleted</td>
               <td class="py-3 pr-4">{device.os || '—'}</td>
               {#if session.isAdmin}
                 <td class="py-3 pr-4 font-mono text-xs">{device.user_id}</td>
@@ -254,6 +310,16 @@
         returned to the pool. Its public key stays blocked permanently, so the device has to generate
         a new one to rejoin. This cannot be undone.
       </p>
+      {#if canAuthenticate(pendingRevoke)}
+        <!-- The address returning to the pool is the visible half. The credential
+             is the half that actually stops the machine talking to this server,
+             and a confirmation that omits it understates what is about to
+             happen. -->
+        <p class="mt-2 text-sm text-slate-600 dark:text-slate-400">
+          Its credential is destroyed at the same moment, so the machine stops being able to reach
+          this server straight away. It will need a new setup key to come back.
+        </p>
+      {/if}
       <div class="mt-6 flex justify-end gap-3">
         <button
           type="button"
